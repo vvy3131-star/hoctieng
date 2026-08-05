@@ -12,8 +12,6 @@
 import streamlit as st
 import json
 import os
-import random
-import re
 import datetime
 import unicodedata
 import streamlit.components.v1 as components
@@ -70,9 +68,6 @@ LESSON_DB = {
             {"phrase": "你好", "meaning": "Xin chào (Nǐ hǎo)"},
             {"phrase": "再见", "meaning": "Tạm biệt (Zài jiàn)"},
             {"phrase": "谢谢", "meaning": "Cảm ơn (Xiè xie)"}
-        ]},
-        {"title": "Level 2: Giới thiệu bản thân", "items": [
-            {"phrase": "我叫...", "meaning": "Tôi tên là... (Wǒ jiào...)"}
         ]}
     ],
     "Tiếng Nhật": [
@@ -83,8 +78,6 @@ LESSON_DB = {
         ]}
     ]
 }
-
-ROLEPLAY_SCENARIOS = ["Nhà hàng", "Du lịch", "Mua sắm", "Phỏng vấn", "Khách hàng"]
 
 # ==============================================================================
 # 3. LƯU TRỮ DỮ LIỆU JSON (BỘ NHỚ DÀI HẠN)
@@ -99,7 +92,7 @@ DEFAULT_DATA = {
     "streak": 1,
     "last_study_date": str(datetime.date.today()),
     "onboard_stage": "ask_language",
-    "mode": "lesson", # lesson / roleplay
+    "mode": "lesson",
     "openai_api_key": "",
     "voice_rate": 1.0
 }
@@ -196,31 +189,24 @@ def process_user_input(user_text):
     if not user_text.strip():
         return
     
-    # Lưu tin nhắn người dùng
     st.session_state.chat_log.append({"role": "user", "text": user_text})
     stage = st.session_state.onboard_stage
     reply = ""
 
-    # Giai đoạn 1: Hỏi chọn ngôn ngữ
     if stage == "ask_language":
         detected = detect_language(user_text)
         if detected:
             st.session_state.target_lang = detected
             st.session_state.onboard_stage = "in_lesson"
-            
-            # Kiểm tra xem có dữ liệu bài cũ không
             curr = current_item()
             reply = f"Được rồi! Hôm nay chúng ta bắt đầu học {detected}.\nBài đầu tiên: '{curr['phrase']}' ({curr['meaning']}). Hãy đọc lại theo mình!"
         else:
             reply = "Mình chưa hiểu rõ ngôn ngữ bạn muốn học. Bạn có thể nói lại ví dụ: 'Tôi muốn học Tiếng Anh' hoặc 'Tiếng Trung' được không?"
 
-    # Giai đoạn 2: Trò chuyện / Học bài
     elif stage == "in_lesson":
         if st.session_state.mode == "lesson":
             curr = current_item()
             target = curr["phrase"]
-            
-            # So khớp phát âm đơn giản
             if normalize_text(user_text) == normalize_text(target):
                 st.session_state.words_learned.append(target)
                 adv_msg = advance_lesson()
@@ -229,17 +215,15 @@ def process_user_input(user_text):
             else:
                 reply = f"😅 Chưa chính xác lắm. Từ đúng là '{target}' ({curr['meaning']}). Bạn hãy nghe kĩ và phát âm lại nhé!"
         else:
-            # Chế độ Hội thoại Roleplay
             reply = f"[{st.session_state.target_lang} Roleplay] Cảm ơn bạn! Bạn nói rất tự nhiên. Hãy tiếp tục trò chuyện nhé!"
 
-    # Lưu phản hồi AI & Lưu File
     st.session_state.chat_log.append({"role": "assistant", "text": reply})
     st.session_state.last_speech = reply
     st.session_state.is_speaking = True
     save_data()
 
 # ==============================================================================
-# 5. GIAO DIỆN & CSS (FULL SINGLE FILE)
+# 5. GIAO DIỆN & CSS
 # ==============================================================================
 st.markdown("""
 <style>
@@ -254,7 +238,6 @@ st.markdown("""
         color: #F8FAFC;
     }
     
-    /* Bong bóng hội thoại */
     .speech-bubble {
         position: relative;
         background: #334155;
@@ -283,7 +266,6 @@ st.markdown("""
         width: 0;
     }
 
-    /* Khung nhân vật AI */
     .avatar-container {
         display: flex;
         justify-content: center;
@@ -298,7 +280,6 @@ st.markdown("""
         50% { transform: translateY(-12px); }
     }
 
-    /* Status Bar */
     .status-card {
         background: rgba(30, 41, 59, 0.7);
         border: 1px solid #475569;
@@ -317,7 +298,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Lời chào tự động khi khởi chạy nếu lịch sử trống
+# Khởi tạo tin nhắn chào hỏi ban đầu
 if not st.session_state.chat_log:
     if st.session_state.name or st.session_state.target_lang:
         welcome_msg = f"Chào mừng bạn quay lại! Hôm trước chúng ta đã học đến Level {st.session_state.level} ({st.session_state.target_lang}). Hôm nay chúng ta tiếp tục nhé!"
@@ -335,7 +316,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Lấy tin nhắn AI gần nhất an toàn (tránh IndexError)
+# Lấy tin nhắn AI mới nhất an toàn
 assistant_msgs = [m["text"] for m in st.session_state.chat_log if m.get("role") == "assistant"]
 if assistant_msgs:
     latest_ai_msg = assistant_msgs[-1]
@@ -345,10 +326,9 @@ else:
 st.markdown(f'<div class="speech-bubble">{latest_ai_msg.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-# 6. NHÂN VẬT AI HOẠT HÌNH SVG (ĐỨNG GIỮA MÀN HÌNH)
+# 6. NHÂN VẬT AI HOẠT HÌNH SVG
 # ==============================================================================
 is_talking = st.session_state.is_speaking
-st.session_state.is_speaking = False # Reset sau render
 
 svg_bear = f"""
 <div class="avatar-container">
@@ -362,7 +342,7 @@ svg_bear = f"""
         <!-- Đầu -->
         <circle cx="100" cy="100" r="70" fill="#A78BFA"/>
         
-        <!-- Mắt (Có hiệu ứng chớp) -->
+        <!-- Mắt -->
         <ellipse cx="75" cy="85" rx="7" ry="10" fill="#0F172A">
             <animate attributeName="ry" values="10; 10; 1; 10" keyTimes="0; 0.9; 0.95; 1" dur="4s" repeatCount="indefinite" />
         </ellipse>
@@ -374,8 +354,8 @@ svg_bear = f"""
         <ellipse cx="100" cy="110" rx="20" ry="14" fill="#ECE9FE"/>
         <polygon points="100,102 93,110 107,110" fill="#4C1D95"/>
         
-        <!-- Miệng (Chuyển động khi nói) -->
-        {"<ellipse cx='100' cy='118' rx='8' ry='10' fill='#EF4444'><animate attributeName='ry' values='3;10;3' dur='0.3s' repeatCount='indefinite'/></ellipse>" if is_talking else "<path d='M92 116 Q100 122 108 116' stroke='#4C1D95' stroke-width='3' stroke-linecap='round' fill='none'/>"}
+        <!-- Miệng (Chuyển động khi phát âm) -->
+        {"<ellipse cx='100' cy='118' rx='8' ry='10' fill='#EF4444'><animate attributeName='ry' values='3;10;3' dur='0.2s' repeatCount='indefinite'/></ellipse>" if is_talking else "<path d='M92 116 Q100 122 108 116' stroke='#4C1D95' stroke-width='3' stroke-linecap='round' fill='none'/>"}
         
         <!-- Má hồng -->
         <circle cx="60" cy="105" r="8" fill="#F472B6" opacity="0.6"/>
@@ -386,83 +366,105 @@ svg_bear = f"""
 st.markdown(svg_bear, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. PHÁT ÂM TTS & MICROPHONE RECOGNITION (HTML5 COMPONENTS)
+# 7. ĐIỀU KHIỂN GIỌNG NÓI (TTS & MICRO STT)
 # ==============================================================================
 tts_lang = LANGUAGES.get(st.session_state.target_lang, {}).get("tts", "vi-VN")
+speech_text = st.session_state.last_speech or latest_ai_msg
 
-# Tự động phát âm câu nói mới nhất của AI
-js_speech = f"""
-<script>
-    if ('speechSynthesis' in window) {{
-        window.speechSynthesis.cancel();
-        var msg = new SpeechSynthesisUtterance({json.dumps(st.session_state.last_speech)});
-        msg.lang = '{tts_lang}';
-        msg.rate = {st.session_state.voice_rate};
-        window.speechSynthesis.speak(msg);
-    }}
-</script>
-"""
-components.html(js_speech, height=0)
+# Tự động phát âm ngay lập tức nếu vừa gửi tin nhắn
+if st.session_state.is_speaking:
+    st.session_state.is_speaking = False
 
-# Khung nhập liệu & Thu âm Micro
-st.write("")
+# Bảng điều khiển Âm thanh + Micro
+components.html(f"""
+    <div style="display:flex; gap:10px; font-family:sans-serif;">
+        <button id="speakBtn" style="flex:1; padding:12px; background:#8B5CF6; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">
+            🔊 Nghe AI nói
+        </button>
+        <button id="micBtn" style="flex:1; padding:12px; background:#0284C7; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">
+            🎤 Bật Micro & Nói
+        </button>
+    </div>
+    <p id="status" style="color:#94A3B8; font-size:12px; text-align:center; margin-top:6px; margin-bottom:0;"></p>
 
+    <script>
+        const speakBtn = document.getElementById('speakBtn');
+        const micBtn = document.getElementById('micBtn');
+        const status = document.getElementById('status');
+        
+        const textToSpeak = {json.dumps(speech_text)};
+        const langCode = {json.dumps(tts_lang)};
+        const rateVal = {st.session_state.voice_rate};
+
+        // Hàm phát âm
+        function speak() {{
+            if ('speechSynthesis' in window) {{
+                window.speechSynthesis.cancel();
+                const msg = new SpeechSynthesisUtterance(textToSpeak);
+                msg.lang = langCode;
+                msg.rate = rateVal;
+                
+                msg.onstart = () => {{ status.innerText = "🔊 Đang phát âm..."; }};
+                msg.onend = () => {{ status.innerText = ""; }};
+                
+                window.speechSynthesis.speak(msg);
+            }} else {{
+                status.innerText = "Trình duyệt không hỗ trợ phát âm.";
+            }}
+        }}
+
+        speakBtn.onclick = speak;
+
+        // Thử tự động đọc (nếu trình duyệt không chặn)
+        setTimeout(speak, 300);
+
+        // Nhận diện giọng nói Micro
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+            recognition.interimResults = false;
+            
+            micBtn.onclick = () => {{
+                recognition.start();
+                status.innerText = "Đang nghe bạn nói...";
+                micBtn.style.background = "#EF4444";
+            }};
+            
+            recognition.onresult = (event) => {{
+                const text = event.results[0][0].transcript;
+                status.innerText = "Đã nghe: " + text;
+                micBtn.style.background = "#0284C7";
+                
+                const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+                if(inputs.length > 0){{
+                    inputs[0].value = text;
+                }}
+            }};
+            
+            recognition.onerror = () => {{
+                status.innerText = "Lỗi nhận diện âm thanh.";
+                micBtn.style.background = "#0284C7";
+            }};
+        }} else {{
+            status.innerText = "Trình duyệt không hỗ trợ Micro.";
+        }}
+    </script>
+""", height=95)
+
+# Khung nhập liệu tin nhắn
 with st.container():
     with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input("Nhập tin nhắn hoặc phát âm...", placeholder="Nói hoặc nhập câu trả lời tại đây...", key="user_text_input")
+        user_input = st.text_input("Nhập tin nhắn...", placeholder="Nói hoặc nhập câu trả lời tại đây...", key="user_text_input")
         submit_button = st.form_submit_button("Gửi 🚀", use_container_width=True)
 
     if submit_button and user_input:
         process_user_input(user_input)
         st.rerun()
 
-# Thu âm bằng Web Speech API
-st.markdown("### 🎙️ Nhấp để nói:")
-st.components.v1.html("""
-    <button id="micBtn" style="width:100%; padding:12px; background:#0284C7; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">
-        🎤 Bật Micro & Nói
-    </button>
-    <p id="status" style="color:#94A3B8; font-size:12px; text-align:center; margin-top:5px;"></p>
-    <script>
-        const btn = document.getElementById('micBtn');
-        const status = document.getElementById('status');
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            recognition.interimResults = false;
-            
-            btn.onclick = () => {
-                recognition.start();
-                status.innerText = "Đang nghe...";
-                btn.style.background = "#EF4444";
-            };
-            
-            recognition.onresult = (event) => {
-                const text = event.results[0][0].transcript;
-                status.innerText = "Đã nghe: " + text;
-                btn.style.background = "#0284C7";
-                
-                // Gửi văn bản thu âm vào Input của Streamlit
-                const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-                if(inputs.length > 0){
-                    inputs[0].value = text;
-                }
-            };
-            
-            recognition.onerror = () => {
-                status.innerText = "Lỗi nhận diện âm thanh.";
-                btn.style.background = "#0284C7";
-            };
-        } else {
-            status.innerText = "Trình duyệt không hỗ trợ Web Speech API.";
-        }
-    </script>
-""", height=90)
-
 # ==============================================================================
-# 8. CÀI ĐẶT ẨN & API KEY (MỞ RỘNG)
+# 8. CÀI ĐẶT ẨN
 # ==============================================================================
-with st.expander("⚙️ Cài đặt nâng cao (API Key & Giọng nói)"):
+with st.expander("⚙️ Cài đặt nâng cao"):
     api_key = st.text_input("OpenAI API Key (Tuỳ chọn)", value=st.session_state.openai_api_key, type="password")
     rate = st.slider("Tốc độ phát âm AI", 0.5, 1.5, st.session_state.voice_rate, 0.1)
     
