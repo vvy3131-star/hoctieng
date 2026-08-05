@@ -43,7 +43,7 @@ if "progress" not in st.session_state:
 if "ai_text" not in st.session_state:
     st.session_state.ai_text = (
         "Xin chào! Mình là giáo viên AI của bạn. Bạn muốn học ngôn ngữ nào hôm nay? "
-        "(Hãy nói: Tiếng Anh, Tiếng Trung, Tiếng Nhật, Tiếng Hàn, Tiếng Pháp, Tiếng Đức, Tiếng Tây Ban Nha, Tiếng Nga...)"
+        "(Hãy nói hoặc nhập: Tiếng Anh, Tiếng Trung, Tiếng Nhật, Tiếng Hàn, Tiếng Pháp, Tiếng Đức...)"
     )
 if "user_text" not in st.session_state:
     st.session_state.user_text = ""
@@ -54,7 +54,7 @@ if "tts_trigger" not in st.session_state:
 st.markdown(
     """
     <style>
-    /* Ẩn toàn bộ menu, header, footer của Streamlit để tránh màn hình đen/rác */
+    /* Ẩn toàn bộ menu, header, footer của Streamlit */
     #MainMenu, header, footer {visibility: hidden;}
     .stApp {background-color: #121212; color: #ffffff;}
     
@@ -72,7 +72,7 @@ st.markdown(
         position: relative;
     }
     
-    /* Vẽ nhân vật Robot Hoạt hình bằng CSS tinh gọn (tránh lỗi load ảnh chậm) */
+    /* Vẽ nhân vật Robot Hoạt hình bằng CSS tinh gọn */
     .robot {
         width: 100px;
         height: 100px;
@@ -102,7 +102,6 @@ st.markdown(
         bottom: 25px;
         left: 35px;
         border-radius: 0 0 15px 15px;
-        animation: talk 0.5s infinite alternate paused;
     }
     
     /* Hiệu ứng chuyển động nhẹ và nháy mắt */
@@ -128,7 +127,6 @@ st.markdown(
         font-size: 1.15rem;
         font-weight: 500;
         box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        position: relative;
     }
     </style>
     """,
@@ -145,7 +143,19 @@ if not api_key:
         "Nhập OpenAI API Key để kích hoạt giáo viên:", type="password"
     )
 
-# Xử lý Logic AI khi nhận được văn bản từ Microphone
+# Hộp văn bản ẩn để bắt sự kiện từ JavaScript (Microphone) gửi lên
+# Sử dụng phương pháp lưu text nhận diện
+user_input_placeholder = st.empty()
+
+# Xử lý Logic AI khi nhận được văn bản từ Microphone gửi qua query params hoặc state chuyển tiếp
+# Ở đây ta tối ưu giao diện bằng cách lắng nghe qua một ô nhập liệu đơn giản, tinh gọn
+user_saying = st.text_input(
+    "Hoặc nhập câu trả lời của bạn tại đây:", key="user_input_text"
+)
+
+if user_saying:
+    st.session_state.user_text = user_saying
+
 if st.session_state.user_text and api_key:
     try:
         client = OpenAI(api_key=api_key)
@@ -159,10 +169,10 @@ if st.session_state.user_text and api_key:
         - Cấp độ hiện tại: Level {p['level']} ({p['topic']})
         
         NHIỆM VỤ CỦA BẠN:
-        1. Nếu học sinh chưa chọn ngôn ngữ, hãy nhận diện ngôn ngữ họ muốn học từ câu trả lời của họ (Ví dụ: "Tiếng Anh", "Tiếng Trung"...), cập nhật hệ thống và bắt đầu bài học Level 1 (Chào hỏi) bằng ngôn ngữ đó kèm giải thích tiếng Việt.
+        1. Nếu học sinh chưa chọn ngôn ngữ, hãy nhận diện ngôn ngữ họ muốn học từ câu trả lời của họ (Ví dụ: "Tiếng Anh", "Tiếng Trung"...), cập nhật hệ thống và bắt đầu bài học Level 1 (Chào hỏi) bằng ngôn ngữ đó kèm giải thích tiếng Việt ngắn gọn.
         2. Nếu đã có ngôn ngữ, hãy đóng vai người bản xứ dạy học. Luôn nói câu ngoại ngữ trước, viết phiên âm (nếu có), giải thích nghĩa bằng tiếng Việt ngắn gọn.
         3. Chấm điểm hoặc nhận xét phản hồi của học sinh xem chính xác chưa, sửa lỗi sai nếu phát hiện ra lỗi qua văn bản họ đọc lại.
-        4. Giữ câu thoại ngắn gọn, tối giản, phù hợp hiện thị trong bong bóng nhỏ.
+        4. Giữ câu thoại ngắn gọn, tối giản, phù hợp hiển thị trong bong bóng nhỏ.
         """
 
         # Lấy lịch sử hội thoại gần nhất để ghi nhớ ngữ cảnh
@@ -178,7 +188,7 @@ if st.session_state.user_text and api_key:
             model="gpt-4o-mini", messages=messages, temperature=0.7
         )
 
-        ai_reply = response.choices[0].message.content
+        ai_reply = response.choices.message.content
         st.session_state.ai_text = ai_reply
 
         # Tự động phân tích xem có chuyển đổi hoặc lưu ngôn ngữ mới không
@@ -243,9 +253,7 @@ voice_gender = "female" if "Nữ" in voice_option else "male"
 
 
 # 5. CÔNG CỤ PHÁT ÂM (TTS) & NÚT MICRO SIÊU TO (STT) QUA TRÌNH DUYỆT HTML5
-# Đoạn mã JavaScript xử lý đồng thời việc Đọc thành tiếng của AI và nút bấm Mic ghi âm to đùng
 sound_lang = "vi-VN"
-# Trích xuất thử xem AI đang nói tiếng gì ở câu đầu để đổi giọng đọc tự động nếu cần
 if "English" in st.session_state.ai_text or "Hello" in st.session_state.ai_text:
     sound_lang = "en-US"
 elif "你好" in st.session_state.ai_text:
@@ -258,7 +266,6 @@ if st.session_state.tts_trigger:
     var msg = new SpeechSynthesisUtterance({json.dumps(st.session_state.ai_text)});
     msg.lang = '{sound_lang}';
     var voices = window.speechSynthesis.getVoices();
-    // Tìm kiếm giọng nam/nữ phù hợp tương đối trong trình duyệt
     for(var i = 0; i < voices.length; i++) {{
         if(voices[i].lang.includes('{sound_lang.split("-")[0]}')) {{
             if('{voice_gender}' == 'female' && voices[i].name.toLowerCase().includes('female')) {{
@@ -272,20 +279,19 @@ if st.session_state.tts_trigger:
     """
     st.session_state.tts_trigger = False
 
-# Thành phần Web component HTML chứa nút BẤM MIC TO ĐÙNG
+# Thành phần Web component HTML chứa nút BẤM MIC TO ĐÙNG (Đã được nhân đôi dấu ngoặc nhọn để tránh lỗi CSS)
 st.components.v1.html(
-   
+    f"""
     <div style="text-align: center; margin-top: 10px;">
         <button id="mic-btn" style="
-            width: 90px; 
-            height: 90px; 
+            width: 100px; 
+            height: 100px; 
             border-radius: 50%; 
             border: none; 
             background: linear-gradient(135deg, #ff007f, #7f00ff); 
             color: white; 
-            font-size: 32px; 
+            font-size: 38px; 
             cursor: pointer;
-            box-shadow: 0 0 20px rgba(255, 0, 127, 0.4);
+            box-shadow: 0 0 25px rgba(255, 0, 127, 0.5);
             transition: all 0.2s ease;
         ">🎤</button>
-        <p id="status-text" style="color: #8888aa; font-size: 13px; margin-top: 10px; font-family: sans-serif;">
