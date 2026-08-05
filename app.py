@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
- AI BUDDY - CẬP NHẬT: ĐỌC SONG NGỮ CHUẨN & TỰ ĐỘNG GỬI KHI NÓI XONG
+ AI BUDDY - THẦY GIÁO GIA TRƯỞNG & HƯỚNG DẪN PHÁT ÂM CHI TIẾT
 ================================================================================
  CÁCH CHẠY:
      pip install streamlit requests
@@ -17,10 +17,10 @@ import unicodedata
 import streamlit.components.v1 as components
 
 # ==============================================================================
-# 1. CẤU HÌNH TRANG & CSS DARK MODE MODERN
+# 1. CẤU HÌNH TRANG & CSS
 # ==============================================================================
 st.set_page_config(
-    page_title="AI Buddy - Học Ngoại Ngữ",
+    page_title="AI Buddy - Thầy Giáo Khó Tính",
     page_icon="🐻",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -29,7 +29,7 @@ st.set_page_config(
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai_buddy_data.json")
 
 # ==============================================================================
-# 2. GIÁO TRÌNH & NGÔN NGỮ HỖ TRỢ
+# 2. GIÁO TRÌNH VỚI LƯU Ý PHÁT ÂM CHI TIẾT
 # ==============================================================================
 LANGUAGES = {
     "Tiếng Anh":          {"flag": "🇬🇧", "tts": "en-US", "stt": "en-US", "keywords": ["anh", "english", "tieng anh", "tiếng anh"]},
@@ -46,27 +46,61 @@ LANGUAGES = {
 LESSON_DB = {
     "Tiếng Anh": [
         {"title": "Level 1: Chào hỏi", "items": [
-            {"phrase": "Hello", "meaning": "Xin chào"},
-            {"phrase": "Goodbye", "meaning": "Tạm biệt"},
-            {"phrase": "Thank you", "meaning": "Cảm ơn"}
+            {
+                "phrase": "Hello", 
+                "meaning": "Xin chào", 
+                "guide": "Trọng âm nhấn vào âm tiết thứ hai /həˈloʊ/. Mồm mở rộng khẩu hình âm 'OH', không đọc thành 'hê-lô' kiểu Việt Nam!"
+            },
+            {
+                "phrase": "Thank you", 
+                "meaning": "Cảm ơn", 
+                "guide": "Âm /θ/ phải lè đầu lưỡi ra giữa hai răng rồi thổi hơi ra nhẹ nhàng. Không được đọc thành 'Săn kiu' hay 'Tăn kiu'!"
+            },
+            {
+                "phrase": "Goodbye", 
+                "meaning": "Tạm biệt", 
+                "guide": "Âm 'd' ở giữa đọc lướt nhẹ, kết thúc bằng âm 'bAĐ' /ɡʊdˈbaɪ/. Đọc dứt khoát!"
+            }
         ]},
-        {"title": "Level 2: Giới thiệu", "items": [
-            {"phrase": "My name is Alex", "meaning": "Tôi tên là Alex"},
-            {"phrase": "Nice to meet you", "meaning": "Rất vui được gặp bạn"}
+        {"title": "Level 2: Giao tiếp thực tế", "items": [
+            {
+                "phrase": "Nice to meet you", 
+                "meaning": "Rất vui được gặp bạn", 
+                "guide": "Chú ý âm cuối /s/ của 'Nice' và âm /t/ nối sang 'you' đọc thành 'Nai-xơ tu mút iu' mượt mà!"
+            }
         ]}
     ],
     "Tiếng Trung": [
-        {"title": "Level 1: Chào hỏi", "items": [
-            {"phrase": "你好", "meaning": "Xin chào (Nǐ hǎo)"},
-            {"phrase": "再见", "meaning": "Tạm biệt (Zài jiàn)"},
-            {"phrase": "谢谢", "meaning": "Cảm ơn (Xiè xie)"}
+        {"title": "Level 1: Chào hỏi cơ bản", "items": [
+            {
+                "phrase": "你好", 
+                "meaning": "Xin chào (Nǐ hǎo)", 
+                "guide": "Hai thanh 3 đi liền nhau! Phải biến điệu thanh đầu thành thanh 2: Đọc là 'Ní hảo', chứ không đọc là 'Nỉ hảo'!"
+            },
+            {
+                "phrase": "谢谢", 
+                "meaning": "Cảm ơn (Xiè xie)", 
+                "guide": "Thanh 4 đi trước đọc hạ giọng mạnh và dứt khoát 'Xiè', từ sau đọc thanh nhẹ lướt 'xie'. Đừng có đọc bằng bằng!"
+            },
+            {
+                "phrase": "再见", 
+                "meaning": "Tạm biệt (Zài jiàn)", 
+                "guide": "Cả 2 từ đều là thanh 4! Nhấn giọng từ trên cao xuống dứt khoát: 'Zài jiàn'! Không được đọc kéo dài như rên!"
+            }
         ]}
     ],
     "Tiếng Nhật": [
         {"title": "Level 1: Chào hỏi", "items": [
-            {"phrase": "こんにちは", "meaning": "Xin chào (Konnichiwa)"},
-            {"phrase": "さようなら", "meaning": "Tạm biệt (Sayōnara)"},
-            {"phrase": "ありがとう", "meaning": "Cảm ơn (Arigatō)"}
+            {
+                "phrase": "こんにちは", 
+                "meaning": "Xin chào ban ngày (Konnichiwa)", 
+                "guide": "Âm 'n' đứng giữa phải ngắt nhẹ một nhịp. Âm 'ha' ở cuối đóng vai trò trợ từ đọc thành 'wa'. Đọc dứt khoát!"
+            },
+            {
+                "phrase": "ありがとう", 
+                "meaning": "Cảm ơn (Arigatou)", 
+                "guide": "Âm 'r' trong tiếng Nhật uốn lưỡi nhẹ giống âm 'L' pha 'Đ'. 'u' ở cuối làm trường âm cho 'to', đọc kéo dài 'Arigatō'."
+            }
         ]}
     ]
 }
@@ -86,7 +120,7 @@ DEFAULT_DATA = {
     "onboard_stage": "ask_language",
     "mode": "lesson",
     "voice_rate": 0.9,
-    "last_speech_seq": [] # Lưu chuỗi kịch bản đọc song ngữ
+    "last_speech_seq": []
 }
 
 def load_data():
@@ -132,7 +166,7 @@ def _update_streak():
 init_state()
 
 # ==============================================================================
-# 4. LOGIC XỬ LÝ AI & BÀI HỌC TẠO CHUỖI SONG NGỮ
+# 4. LOGIC XỬ LÝ AI - TÍNH CÁCH GIA TRƯỜNG & HƯỚNG DẪN BẢN NGỮ
 # ==============================================================================
 def strip_accents(s):
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
@@ -172,25 +206,22 @@ def advance_lesson():
         st.session_state.level += 1
         if st.session_state.level > len(plan):
             st.session_state.mode = "roleplay"
-            return "Bạn đã hoàn thành các bài cơ bản! Chúng ta hãy cùng luyện hội thoại tự do nhé!"
-        return f"🎉 Tuyệt vời! Bạn đã vượt qua và bước sang Level {st.session_state.level}!"
-    return "Hãy cùng luyện tập từ tiếp theo nào."
+            return "Đã xong bài căn bản! Giờ bước vào hội thoại tự do, nói sai câu nào tao chỉnh câu đấy!"
+        return f"Mới xong được Level {st.session_state.level-1} thôi, đừng có mà tưởng bở! Tiếp tục Level {st.session_state.level} ngay!"
+    return "Xong từ này rồi. Học tiếp từ tiếp theo!"
 
 def set_target_language(lang_name):
     st.session_state.target_lang = lang_name
     st.session_state.onboard_stage = "in_lesson"
     curr = current_item()
-    
     target_tts = LANGUAGES[lang_name]["tts"]
     
-    # Text hiển thị
-    display_text = f"Được rồi! Chúng ta sẽ học {lang_name}.\nBài đầu tiên: '{curr['phrase']}' nghĩa là ({curr['meaning']}). Hãy đọc thử lại từ này nhé!"
+    display_text = f"Đã chọn {lang_name}! Học hành cho đàng hoàng vào!\nTừ đầu tiên: '{curr['phrase']}' ({curr['meaning']}).\n📌 LƯU Ý PHÁT ÂM: {curr['guide']}\n👉 Đọc ngay cho tao nghe!"
     
-    # Text AI đọc (Chia ra Tiếng Việt và Tiếng đích)
     tts_seq = [
-        {"lang": "vi-VN", "text": f"Được rồi! Chúng ta sẽ học {lang_name}. Bài đầu tiên "},
+        {"lang": "vi-VN", "text": f"Đã chọn {lang_name}! Học hành cho đàng hoàng vào! Từ đầu tiên: "},
         {"lang": target_tts, "text": curr['phrase']},
-        {"lang": "vi-VN", "text": f" nghĩa là {curr['meaning']}. Hãy đọc thử lại từ này nhé!"}
+        {"lang": "vi-VN", "text": f" nghĩa là {curr['meaning']}. Lưu ý phát âm: {curr['guide']}. Đọc ngay cho tao nghe!"}
     ]
     
     st.session_state.chat_log.append({"role": "assistant", "text": display_text})
@@ -204,7 +235,6 @@ def process_user_input(user_text):
     
     st.session_state.chat_log.append({"role": "user", "text": user_text})
     stage = st.session_state.onboard_stage
-    
     display_text = ""
     tts_seq = []
 
@@ -214,7 +244,7 @@ def process_user_input(user_text):
             set_target_language(detected)
             return
         else:
-            display_text = "Mình chưa nhận diện được ngôn ngữ bạn chọn. Bạn hãy bấm vào nút chọn ngôn ngữ bên dưới hoặc nhập lại nhé!"
+            display_text = "Nói cái gì đấy?! Chọn đúng tên ngôn ngữ xem nào! Bấm nút bên dưới cho nhanh!"
             tts_seq = [{"lang": "vi-VN", "text": display_text}]
 
     elif stage == "in_lesson":
@@ -224,27 +254,30 @@ def process_user_input(user_text):
             curr = current_item()
             target = curr["phrase"]
             
-            # So khớp chuỗi phát âm
+            # So sánh chuẩn xác phát âm
             if normalize_text(user_text) == normalize_text(target):
                 st.session_state.words_learned.append(target)
                 adv_msg = advance_lesson()
                 next_curr = current_item()
                 
-                display_text = f"🎯 Rất chuẩn xác!\n{adv_msg}\nTừ tiếp theo là: '{next_curr['phrase']}' ({next_curr['meaning']}). Đọc thử nhé!"
+                display_text = f"😤 Hừ, tạm chấp nhận được! Cuối cùng cái đầu cũng chịu hoạt động rồi đấy.\n{adv_msg}\nTừ tiếp theo: '{next_curr['phrase']}' ({next_curr['meaning']}).\n📌 LƯU Ý: {next_curr['guide']}\nĐọc lại ngay!"
+                
                 tts_seq = [
-                    {"lang": "vi-VN", "text": f"Rất chuẩn xác! {adv_msg} Từ tiếp theo là: "},
+                    {"lang": "vi-VN", "text": f"Hừ, tạm chấp nhận được! Cuối cùng cái đầu cũng chịu hoạt động rồi đấy. {adv_msg} Từ tiếp theo: "},
                     {"lang": target_tts, "text": next_curr['phrase']},
-                    {"lang": "vi-VN", "text": f" nghĩa là {next_curr['meaning']}. Đọc thử nhé!"}
+                    {"lang": "vi-VN", "text": f" nghĩa là {next_curr['meaning']}. Lưu ý: {next_curr['guide']}. Đọc lại ngay!"}
                 ]
             else:
-                display_text = f"😅 Chưa chính xác lắm. Từ đúng là '{target}' ({curr['meaning']}). Bạn hãy nghe và đọc lại nhé!"
+                # CHỬI GIA TRƯỜNG KHI NÓI SAI
+                display_text = f"🤬 Đọc cái kiểu gì đấy?! Ngu quá, nhìn đây này!\nTừ đúng phải là '{target}' ({curr['meaning']}).\nMày vừa đọc thành '{user_text}' là sai hoàn toàn!\n📌 NHÌN LẠI CÁCH ĐỌC: {curr['guide']}\nNghe lại rồi đọc lại ngay cho tao!"
+                
                 tts_seq = [
-                    {"lang": "vi-VN", "text": "Chưa chính xác lắm. Từ đúng là "},
+                    {"lang": "vi-VN", "text": f"Đọc cái kiểu gì đấy?! Ngu quá, nhìn đây này! Từ người ta là "},
                     {"lang": target_tts, "text": target},
-                    {"lang": "vi-VN", "text": f" nghĩa là {curr['meaning']}. Bạn hãy nghe và đọc lại nhé!"}
+                    {"lang": "vi-VN", "text": f" nghĩa là {curr['meaning']}. Mày vừa đọc sai rồi. Nghe kĩ lưu ý này: {curr['guide']}. Nghe lại rồi đọc lại ngay!"}
                 ]
         else:
-            display_text = f"Cảm ơn bạn! Bạn phát âm rất tự nhiên. Hãy tiếp tục trò chuyện nhé!"
+            display_text = f"Nói chưa được tự nhiên đâu! Nói lại câu khác xem nào!"
             tts_seq = [{"lang": "vi-VN", "text": display_text}]
 
     st.session_state.chat_log.append({"role": "assistant", "text": display_text})
@@ -262,15 +295,15 @@ st.markdown("""
     .stApp { background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%); color: #F8FAFC; }
     
     .speech-bubble {
-        position: relative; background: #334155; border: 2px solid #38BDF8;
+        position: relative; background: #1E293B; border: 2px solid #EF4444;
         border-radius: 20px; padding: 16px 20px; margin: 10px auto 15px auto;
-        max-width: 95%; text-align: center; font-size: 17px; line-height: 1.5; color: #F1F5F9;
-        box-shadow: 0 10px 25px -5px rgba(56, 189, 248, 0.25);
+        max-width: 95%; text-align: left; font-size: 16px; line-height: 1.6; color: #F1F5F9;
+        box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.3);
     }
     .speech-bubble:after {
         content: ''; position: absolute; bottom: -12px; left: 50%;
         transform: translateX(-50%); border-width: 12px 12px 0;
-        border-style: solid; border-color: #334155 transparent; display: block; width: 0;
+        border-style: solid; border-color: #1E293B transparent; display: block; width: 0;
     }
     .status-card {
         background: rgba(30, 41, 59, 0.7); border: 1px solid #475569;
@@ -280,9 +313,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Khởi tạo tin nhắn chào hỏi ban đầu
+# Lịch sử ban đầu
 if not st.session_state.chat_log:
-    welcome_msg = "Xin chào! Mình là AI Buddy. Bạn muốn cùng mình học ngôn ngữ nào dưới đây?"
+    welcome_msg = "Mày muốn học cái tiếng gì?! Bấm chọn bên dưới nhanh lên rồi tao dạy!"
     st.session_state.chat_log.append({"role": "assistant", "text": welcome_msg})
     st.session_state.last_speech_seq = [{"lang": "vi-VN", "text": welcome_msg}]
 
@@ -299,40 +332,46 @@ latest_ai_msg = assistant_msgs[-1] if assistant_msgs else ""
 st.markdown(f'<div class="speech-bubble">{latest_ai_msg.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-# 6. NHÂN VẬT AI HOẠT HÌNH SVG
+# 6. NHÂN VẬT AI HOẠT HÌNH SVG (BIỂU CẢM NGẦU / TỔNG TÀI GIA TRƯỜNG)
 # ==============================================================================
 is_talking = st.session_state.is_speaking
 mouth_svg = (
-    "<ellipse cx='100' cy='118' rx='8' ry='10' fill='#EF4444'>"
-    "<animate attributeName='ry' values='3;10;3' dur='0.2s' repeatCount='indefinite'/>"
+    "<ellipse cx='100' cy='118' rx='10' ry='12' fill='#EF4444'>"
+    "<animate attributeName='ry' values='4;12;4' dur='0.15s' repeatCount='indefinite'/>"
     "</ellipse>"
     if is_talking
-    else "<path d='M92 116 Q100 122 108 116' stroke='#4C1D95' stroke-width='3' stroke-linecap='round' fill='none'/>"
+    else "<path d='M85 120 Q100 110 115 120' stroke='#EF4444' stroke-width='4' stroke-linecap='round' fill='none'/>"
 )
 
 svg_bear_html = f"""
 <!DOCTYPE html><html><head><style>
     body {{ margin: 0; padding: 0; background: transparent; display: flex; justify-content: center; align-items: center; overflow: hidden; }}
     .floating-bear {{ animation: float 3s ease-in-out infinite; }}
-    @keyframes float {{ 0%, 100% {{ transform: translateY(0px); }} 50% {{ transform: translateY(-10px); }} }}
+    @keyframes float {{ 0%, 100% {{ transform: translateY(0px); }} 50% {{ transform: translateY(-8px); }} }}
 </style></head><body>
     <svg class="floating-bear" width="180" height="180" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="50" cy="50" r="25" fill="#8B5CF6"/> <circle cx="50" cy="50" r="14" fill="#DDD6FE"/>
-        <circle cx="150" cy="50" r="25" fill="#8B5CF6"/> <circle cx="150" cy="50" r="14" fill="#DDD6FE"/>
-        <circle cx="100" cy="100" r="70" fill="#A78BFA"/>
-        <ellipse cx="75" cy="85" rx="7" ry="10" fill="#0F172A"><animate attributeName="ry" values="10; 10; 1; 10" keyTimes="0; 0.9; 0.95; 1" dur="4s" repeatCount="indefinite" /></ellipse>
-        <ellipse cx="125" cy="85" rx="7" ry="10" fill="#0F172A"><animate attributeName="ry" values="10; 10; 1; 10" keyTimes="0; 0.9; 0.95; 1" dur="4s" repeatCount="indefinite" /></ellipse>
-        <ellipse cx="100" cy="110" rx="20" ry="14" fill="#ECE9FE"/>
-        <polygon points="100,102 93,110 107,110" fill="#4C1D95"/>
+        <!-- Tai -->
+        <circle cx="50" cy="50" r="25" fill="#475569"/> <circle cx="50" cy="50" r="14" fill="#94A3B8"/>
+        <circle cx="150" cy="50" r="25" fill="#475569"/> <circle cx="150" cy="50" r="14" fill="#94A3B8"/>
+        <!-- Đầu -->
+        <circle cx="100" cy="100" r="70" fill="#64748B"/>
+        <!-- Lông mày gia trưởng nghiêm nghị -->
+        <path d="M60 68 L85 78" stroke="#0F172A" stroke-width="5" stroke-linecap="round"/>
+        <path d="M140 68 L115 78" stroke="#0F172A" stroke-width="5" stroke-linecap="round"/>
+        <!-- Mắt sắc lẹm -->
+        <ellipse cx="75" cy="88" rx="6" ry="8" fill="#0F172A"/>
+        <ellipse cx="125" cy="88" rx="6" ry="8" fill="#0F172A"/>
+        <!-- Mũi -->
+        <ellipse cx="100" cy="108" rx="16" ry="10" fill="#E2E8F0"/>
+        <polygon points="100,102 94,108 106,108" fill="#0F172A"/>
         {mouth_svg}
-        <circle cx="60" cy="105" r="8" fill="#F472B6" opacity="0.6"/> <circle cx="140" cy="105" r="8" fill="#F472B6" opacity="0.6"/>
     </svg>
 </body></html>
 """
 components.html(svg_bear_html, height=190)
 
 # ==============================================================================
-# 7. ĐIỀU KHIỂN ÂM THANH JAVASCRIPT (ĐỌC SONG NGỮ & TỰ ĐỘNG GỬI)
+# 7. ĐIỀU KHIỂN ÂM THANH JAVASCRIPT (SONG NGỮ & AUTO SUBMIT)
 # ==============================================================================
 if st.session_state.onboard_stage == "ask_language":
     stt_lang = "vi-VN"
@@ -346,11 +385,11 @@ if st.session_state.is_speaking:
 
 components.html(f"""
     <div style="display:flex; gap:10px; font-family:sans-serif;">
-        <button id="speakBtn" style="flex:1; padding:12px; background:#8B5CF6; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">
-            🔊 Nghe AI nói
+        <button id="speakBtn" style="flex:1; padding:12px; background:#DC2626; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">
+            🔊 Bắt thầy đọc lại
         </button>
         <button id="micBtn" style="flex:1; padding:12px; background:#0284C7; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">
-            🎤 Bật Micro & Tự động gửi ({stt_lang})
+            🎤 Đọc phát âm ({stt_lang})
         </button>
     </div>
     <p id="status" style="color:#94A3B8; font-size:12px; text-align:center; margin-top:6px; margin-bottom:0;"></p>
@@ -365,7 +404,6 @@ components.html(f"""
         const voiceRate = {st.session_state.voice_rate};
         let currentVoiceIdx = 0;
 
-        // Hàm Đọc Song Ngữ (Code-Switching)
         function speakNextSegment() {{
             if (currentVoiceIdx >= sequence.length) {{
                 status.innerText = "";
@@ -383,20 +421,18 @@ components.html(f"""
             msg.lang = part.lang;
             msg.rate = voiceRate;
             
-            // Tìm giọng ưu tiên (Natural > Prefix Lang > Bất kỳ)
             const voices = window.speechSynthesis.getVoices();
             let voice = voices.find(v => v.lang.includes(part.lang) && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Online")));
             if (!voice) voice = voices.find(v => v.lang.includes(part.lang));
             if (!voice) voice = voices.find(v => v.lang.startsWith(part.lang.split('-')[0]));
             if (voice) msg.voice = voice;
 
-            msg.onstart = () => {{ status.innerText = "🔊 Đang đọc giọng: " + part.lang; }};
+            msg.onstart = () => {{ status.innerText = "🔊 Đang giảng..."; }};
             msg.onend = () => {{ 
                 currentVoiceIdx++;
-                speakNextSegment(); // Chạy câu tiếp theo trong mảng
+                speakNextSegment();
             }};
-            msg.onerror = (e) => {{
-                console.log("Lỗi phát âm:", e);
+            msg.onerror = () => {{
                 currentVoiceIdx++;
                 speakNextSegment();
             }};
@@ -405,10 +441,7 @@ components.html(f"""
         }}
 
         function startSpeaking() {{
-            if (!('speechSynthesis' in window)) {{
-                status.innerText = "Trình duyệt không hỗ trợ phát âm.";
-                return;
-            }}
+            if (!('speechSynthesis' in window)) return;
             window.speechSynthesis.cancel();
             currentVoiceIdx = 0;
             speakNextSegment();
@@ -416,13 +449,11 @@ components.html(f"""
 
         speakBtn.onclick = startSpeaking;
         
-        // Fix: Chrome cần thời gian load voices lần đầu tiên
         window.speechSynthesis.onvoiceschanged = () => {{
             if(currentVoiceIdx === 0) startSpeaking();
         }};
         setTimeout(startSpeaking, 300);
 
-        // Xử lý Micro & Tự Động Gửi (Auto-submit Streamlit Form)
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {{
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             const recognition = new SpeechRecognition();
@@ -432,8 +463,8 @@ components.html(f"""
             micBtn.onclick = () => {{
                 try {{
                     recognition.start();
-                    status.innerText = "🎤 Đang lắng nghe... (Nói xong tự gửi)";
-                    micBtn.style.background = "#EF4444";
+                    status.innerText = "🎤 Đang nghe... Nói xong tự nộp!";
+                    micBtn.style.background = "#DC2626";
                 }} catch (e) {{
                     recognition.stop();
                 }}
@@ -441,39 +472,30 @@ components.html(f"""
             
             recognition.onresult = (event) => {{
                 const text = event.results[0][0].transcript;
-                status.innerText = "Đã nghe: " + text + " -> Đang gửi...";
+                status.innerText = "Nói: " + text + " -> Đang kiểm tra...";
                 micBtn.style.background = "#0284C7";
                 
                 const doc = window.parent.document;
                 const inputField = doc.querySelector('input[type="text"]');
                 
                 if (inputField) {{
-                    // 1. Cập nhật dữ liệu vào Input theo cơ chế React của Streamlit
                     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
                     nativeInputValueSetter.call(inputField, text);
                     inputField.dispatchEvent(new Event('input', {{ bubbles: true }}));
 
-                    // 2. Tìm nút Gửi (Submit Form) và tự động Click
                     setTimeout(() => {{
                         const submitBtn = doc.querySelector('button[kind="formSubmit"]');
                         if (submitBtn) {{
                             submitBtn.click();
-                        }} else {{
-                            // Dự phòng: Mô phỏng bấm phím Enter
-                            inputField.dispatchEvent(new KeyboardEvent('keydown', {{
-                                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-                            }}));
                         }}
-                    }}, 400); // Nghỉ 0.4s để người dùng kịp thấy kết quả
+                    }}, 400);
                 }}
             }};
             
             recognition.onerror = () => {{
-                status.innerText = "Không nghe rõ. Vui lòng thử lại.";
+                status.innerText = "Chưa nghe thấy gì cả! Nói to lên!";
                 micBtn.style.background = "#0284C7";
             }};
-        }} else {{
-            status.innerText = "Trình duyệt không hỗ trợ thu âm Micro.";
         }}
     </script>
 """, height=90)
@@ -482,7 +504,7 @@ components.html(f"""
 # 8. KHU VỰC CHỌN NGÔN NGỮ & NHẬP LIỆU
 # ==============================================================================
 if st.session_state.onboard_stage == "ask_language":
-    st.write("👉 **Chọn nhanh ngôn ngữ bạn muốn học:**")
+    st.write("👉 **Chọn ngôn ngữ để thầy nắn phát âm:**")
     cols = st.columns(3)
     idx = 0
     for lang_name, meta in LANGUAGES.items():
@@ -495,19 +517,19 @@ if st.session_state.onboard_stage == "ask_language":
 
 with st.container():
     with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input("Nhập tin nhắn hoặc nội dung phát âm...", placeholder="Gõ câu trả lời hoặc dùng Micro...", key="user_text_input")
-        submit_button = st.form_submit_button("Gửi 🚀", use_container_width=True)
+        user_input = st.text_input("Nhập câu trả lời hoặc dùng Micro...", placeholder="Đọc từ vựng vào Micro...", key="user_text_input")
+        submit_button = st.form_submit_button("Nộp bài 🚀", use_container_width=True)
 
     if submit_button and user_input:
         process_user_input(user_input)
         st.rerun()
 
 # ==============================================================================
-# 9. CÀI ĐẶT NÂNG CAO
+# 9. CÀI ĐẶT
 # ==============================================================================
-with st.expander("⚙️ Cài đặt giọng nói & Hệ thống"):
-    rate = st.slider("Tốc độ đọc của AI (Voice Rate)", 0.5, 1.5, st.session_state.voice_rate, 0.05)
-    if st.button("Đổi ngôn ngữ muốn học"):
+with st.expander("⚙️ Cài đặt hệ thống"):
+    rate = st.slider("Tốc độ nói của thầy", 0.5, 1.5, st.session_state.voice_rate, 0.05)
+    if st.button("Đổi ngôn ngữ"):
         st.session_state.onboard_stage = "ask_language"
         st.session_state.target_lang = ""
         save_data()
@@ -515,4 +537,4 @@ with st.expander("⚙️ Cài đặt giọng nói & Hệ thống"):
     if st.button("Lưu cài đặt"):
         st.session_state.voice_rate = rate
         save_data()
-        st.success("Đã lưu thành công!")
+        st.success("Đã lưu!")
