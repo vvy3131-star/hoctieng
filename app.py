@@ -1,1449 +1,1116 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
- AI LANGUAGE LEARNING - Ứng dụng học ngoại ngữ bằng AI
- Tác giả: Senior Python/AI Engineer & UI-UX Designer (viết theo yêu cầu)
- File duy nhất: app.py (không dùng module/package/class ở file khác)
+ AI BUDDY - Người bạn đồng hành học ngoại ngữ
+ Một nhân vật AI hoạt hình lớn, có cá tính, đứng giữa màn hình trò chuyện
+ và dạy ngoại ngữ cho người dùng.
+
+ File DUY NHẤT: app.py
+ - Không sidebar, không menu phức tạp.
+ - Toàn bộ code (giao diện, logic, AI, lưu trữ) nằm trong 1 file này.
 ================================================================================
- Cách chạy:
+ CÁCH CHẠY:
      pip install streamlit
      streamlit run app.py
 
- Tích hợp AI thật (tuỳ chọn):
-     - Đặt biến môi trường OPENAI_API_KEY (hoặc nhập trong Cài đặt > AI)
-     - Nếu chưa có key -> app tự dùng "Chatbot giả lập" (rule-based) để demo
-     - Khi có key, hàm get_ai_response() sẽ tự động gọi OpenAI API thật.
+ TÍCH HỢP AI THẬT (tuỳ chọn):
+     - Mở phần cài đặt (icon ⚙️ góc trên) và dán OpenAI API Key.
+     - Nếu không có Key, ứng dụng dùng "bộ não" rule-based có cá tính
+       riêng để vẫn dạy học & trò chuyện được đầy đủ (chế độ demo).
+
+ LƯU TRỮ TIẾN TRÌNH:
+     - Tự động lưu vào file JSON "ai_buddy_data.json" cùng thư mục.
+     - Mỗi lần mở lại app, AI sẽ nhớ tên bạn, ngôn ngữ đang học, cấp độ,
+       streak, từ đã học... và chào bạn như một người bạn quen.
 ================================================================================
 """
 
 import streamlit as st
-import random
-import time
-import datetime
 import json
 import os
+import random
 import re
-import base64
-import urllib.parse
+import time
+import datetime
+import unicodedata
 
 # ==============================================================================
 # 1. CẤU HÌNH TRANG
 # ==============================================================================
 st.set_page_config(
-    page_title="AI Language Learning",
-    page_icon="🌐",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    page_title="AI Buddy - Bạn đồng hành học ngoại ngữ",
+    page_icon="🐻",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai_buddy_data.json")
+
 # ==============================================================================
-# 2. KHỞI TẠO SESSION STATE (bộ nhớ phiên làm việc)
+# 2. DỮ LIỆU NGÔN NGỮ & GIÁO TRÌNH
 # ==============================================================================
+LANGUAGES = {
+    "Tiếng Anh":          {"flag": "🇬🇧", "tts": "en-US", "keywords": ["anh", "english", "tiếng anh"]},
+    "Tiếng Trung":        {"flag": "🇨🇳", "tts": "zh-CN", "keywords": ["trung", "chinese", "tiếng trung", "trung quốc"]},
+    "Tiếng Nhật":         {"flag": "🇯🇵", "tts": "ja-JP", "keywords": ["nhật", "japanese", "tiếng nhật"]},
+    "Tiếng Hàn":          {"flag": "🇰🇷", "tts": "ko-KR", "keywords": ["hàn", "korean", "tiếng hàn", "hàn quốc"]},
+    "Tiếng Pháp":         {"flag": "🇫🇷", "tts": "fr-FR", "keywords": ["pháp", "french", "tiếng pháp"]},
+    "Tiếng Đức":          {"flag": "🇩🇪", "tts": "de-DE", "keywords": ["đức", "german", "tiếng đức"]},
+    "Tiếng Tây Ban Nha":  {"flag": "🇪🇸", "tts": "es-ES", "keywords": ["tây ban nha", "spanish", "tiếng tây ban nha"]},
+    "Tiếng Nga":          {"flag": "🇷🇺", "tts": "ru-RU", "keywords": ["nga", "russian", "tiếng nga"]},
+    "Tiếng Việt":         {"flag": "🇻🇳", "tts": "vi-VN", "keywords": ["việt", "vietnamese", "tiếng việt"]},
+}
+
+# Giáo trình theo cấp độ - dễ mở rộng: chỉ cần thêm phần tử vào list bên dưới.
+# Mỗi ngôn ngữ có các Level, mỗi Level có tiêu đề + danh sách từ/câu cần học.
+LESSON_DB = {
+    "Tiếng Anh": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "Hello", "meaning": "Xin chào", "phonetic": "/həˈloʊ/"},
+            {"phrase": "Goodbye", "meaning": "Tạm biệt", "phonetic": "/ˌɡʊdˈbaɪ/"},
+            {"phrase": "Thank you", "meaning": "Cảm ơn", "phonetic": "/ˈθæŋk juː/"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "My name is...", "meaning": "Tôi tên là...", "phonetic": "/maɪ neɪm ɪz/"},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "Family", "meaning": "Gia đình", "phonetic": "/ˈfæm.əl.i/"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "How much is this?", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "/haʊ mʌtʃ ɪz ðɪs/"},
+        ]},
+    ],
+    "Tiếng Trung": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "你好", "meaning": "Xin chào", "phonetic": "nǐ hǎo"},
+            {"phrase": "再见", "meaning": "Tạm biệt", "phonetic": "zài jiàn"},
+            {"phrase": "谢谢", "meaning": "Cảm ơn", "phonetic": "xiè xiè"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "我叫...", "meaning": "Tôi tên là...", "phonetic": "wǒ jiào..."},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "家人", "meaning": "Gia đình", "phonetic": "jiā rén"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "这个多少钱？", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "zhège duōshǎo qián?"},
+        ]},
+    ],
+    "Tiếng Nhật": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "こんにちは", "meaning": "Xin chào", "phonetic": "Konnichiwa"},
+            {"phrase": "さようなら", "meaning": "Tạm biệt", "phonetic": "Sayounara"},
+            {"phrase": "ありがとう", "meaning": "Cảm ơn", "phonetic": "Arigatou"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "私の名前は...です", "meaning": "Tôi tên là...", "phonetic": "Watashi no namae wa... desu"},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "家族", "meaning": "Gia đình", "phonetic": "Kazoku"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "これはいくらですか？", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "Kore wa ikura desu ka?"},
+        ]},
+    ],
+    "Tiếng Hàn": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "안녕하세요", "meaning": "Xin chào", "phonetic": "Annyeonghaseyo"},
+            {"phrase": "안녕히 가세요", "meaning": "Tạm biệt", "phonetic": "Annyeonghi gaseyo"},
+            {"phrase": "감사합니다", "meaning": "Cảm ơn", "phonetic": "Gamsahamnida"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "제 이름은...입니다", "meaning": "Tôi tên là...", "phonetic": "Je ireumeun...imnida"},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "가족", "meaning": "Gia đình", "phonetic": "Gajok"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "이거 얼마예요?", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "Igeo eolmayeyo?"},
+        ]},
+    ],
+    "Tiếng Pháp": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "Bonjour", "meaning": "Xin chào", "phonetic": "/bɔ̃.ʒuʁ/"},
+            {"phrase": "Au revoir", "meaning": "Tạm biệt", "phonetic": "/o ʁə.vwaʁ/"},
+            {"phrase": "Merci", "meaning": "Cảm ơn", "phonetic": "/mɛʁ.si/"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "Je m'appelle...", "meaning": "Tôi tên là...", "phonetic": "/ʒə ma.pɛl/"},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "Famille", "meaning": "Gia đình", "phonetic": "/fa.mij/"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "Combien ça coûte?", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "/kɔ̃.bjɛ̃ sa kut/"},
+        ]},
+    ],
+    "Tiếng Đức": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "Hallo", "meaning": "Xin chào", "phonetic": "/ˈhalo/"},
+            {"phrase": "Auf Wiedersehen", "meaning": "Tạm biệt", "phonetic": "/aʊf ˈviːdɐˌzeːən/"},
+            {"phrase": "Danke", "meaning": "Cảm ơn", "phonetic": "/ˈdaŋkə/"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "Ich heiße...", "meaning": "Tôi tên là...", "phonetic": "/ɪç ˈhaɪsə/"},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "Familie", "meaning": "Gia đình", "phonetic": "/faˈmiːli̯ə/"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "Wie viel kostet das?", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "/viː fiːl ˈkɔstət das/"},
+        ]},
+    ],
+    "Tiếng Tây Ban Nha": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "Hola", "meaning": "Xin chào", "phonetic": "/ˈola/"},
+            {"phrase": "Adiós", "meaning": "Tạm biệt", "phonetic": "/aˈðjos/"},
+            {"phrase": "Gracias", "meaning": "Cảm ơn", "phonetic": "/ˈɡɾaθjas/"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "Me llamo...", "meaning": "Tôi tên là...", "phonetic": "/me ˈʝamo/"},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "Familia", "meaning": "Gia đình", "phonetic": "/faˈmilja/"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "¿Cuánto cuesta esto?", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "/ˈkwanto ˈkwesta ˈesto/"},
+        ]},
+    ],
+    "Tiếng Nga": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "Привет", "meaning": "Xin chào", "phonetic": "Privet"},
+            {"phrase": "До свидания", "meaning": "Tạm biệt", "phonetic": "Do svidaniya"},
+            {"phrase": "Спасибо", "meaning": "Cảm ơn", "phonetic": "Spasibo"},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "Меня зовут...", "meaning": "Tôi tên là...", "phonetic": "Menya zovut..."},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "Семья", "meaning": "Gia đình", "phonetic": "Sem'ya"},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "Сколько это стоит?", "meaning": "Cái này bao nhiêu tiền?", "phonetic": "Skol'ko eto stoit?"},
+        ]},
+    ],
+    "Tiếng Việt": [
+        {"title": "Chào hỏi", "items": [
+            {"phrase": "Xin chào", "meaning": "Hello", "phonetic": ""},
+            {"phrase": "Tạm biệt", "meaning": "Goodbye", "phonetic": ""},
+            {"phrase": "Cảm ơn", "meaning": "Thank you", "phonetic": ""},
+        ]},
+        {"title": "Giới thiệu bản thân", "items": [
+            {"phrase": "Tôi tên là...", "meaning": "My name is...", "phonetic": ""},
+        ]},
+        {"title": "Gia đình", "items": [
+            {"phrase": "Gia đình", "meaning": "Family", "phonetic": ""},
+        ]},
+        {"title": "Mua sắm", "items": [
+            {"phrase": "Cái này bao nhiêu tiền?", "meaning": "How much is this?", "phonetic": ""},
+        ]},
+    ],
+}
+
+ROLEPLAY_SCENARIOS = ["Khách hàng", "Nhân viên", "Bạn bè", "Du lịch", "Nhà hàng", "Phỏng vấn"]
+
+ANIMALS = {
+    "bear":   {"name": "Gấu nâu", "face": "#B98255", "muzzle": "#F3D9BC", "ear": "#A9744F"},
+    "panda":  {"name": "Gấu trúc", "face": "#FDFDFD", "muzzle": "#FFFFFF", "ear": "#2E2E2E"},
+    "cat":    {"name": "Mèo cam", "face": "#F0A94E", "muzzle": "#FCE4C4", "ear": "#E8933A"},
+    "fox":    {"name": "Cáo lửa", "face": "#ED7D31", "muzzle": "#FCEBDD", "ear": "#D96522"},
+    "rabbit": {"name": "Thỏ bông", "face": "#F7F1EA", "muzzle": "#FFFFFF", "ear": "#F3D9E6"},
+    "robot":  {"name": "Robot Bo", "face": "#B7C2CC", "muzzle": "#DCE4EA", "ear": "#8C98A4"},
+}
+
+# ==============================================================================
+# 3. LƯU TRỮ DỮ LIỆU (JSON) - BỘ NHỚ DÀI HẠN CỦA AI
+# ==============================================================================
+DEFAULT_DATA = {
+    "name": "",
+    "target_lang": "",
+    "level": 1,                 # số thứ tự level hiện tại (1-based)
+    "item_index": 0,            # vị trí từ/câu đang học trong level
+    "words_learned": [],
+    "mistakes": {},             # {phrase: số lần đọc sai}
+    "chat_log": [],             # [{role, text, ts}]
+    "total_study_minutes": 0,
+    "streak": 0,
+    "last_study_date": "",
+    "character": "bear",
+    "voice_gender": "female",
+    "voice_rate": 1.0,
+    "onboard_stage": "ask_language",   # ask_language -> ask_name -> lesson
+    "mode": "lesson",           # lesson / roleplay / free_chat
+    "roleplay_scenario": "",
+    "theme": "dark",
+    "openai_api_key": "",
+    "first_time": True,
+}
+
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            merged = DEFAULT_DATA.copy()
+            merged.update(data)
+            return merged
+        except Exception:
+            return DEFAULT_DATA.copy()
+    return DEFAULT_DATA.copy()
+
+
+def save_data():
+    """Lưu toàn bộ tiến trình học xuống file JSON (bộ nhớ dài hạn)."""
+    try:
+        payload = {k: st.session_state[k] for k in DEFAULT_DATA.keys() if k in st.session_state}
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # không chặn UI nếu ghi file lỗi (ví dụ môi trường read-only)
+
+
 def init_state():
-    defaults = {
-        "theme": "dark",                       # dark / light
-        "page": "Trang chủ",
-        "native_lang": "Tiếng Việt",
-        "target_lang": "Tiếng Anh",
-        "onboarded": False,
-        "chat_history": {},                    # {lang: [ {role, content, ts} ]}
-        "xp": 0,
-        "streak": 3,
-        "last_study_date": str(datetime.date.today()),
-        "level": 1,
-        "words_learned": set(),
-        "flashcard_index": 0,
-        "flashcard_known": set(),
-        "flashcard_unknown": set(),
-        "quiz_score": 0,
-        "quiz_total": 0,
-        "game_score": 0,
-        "font_size": "Vừa",
-        "ai_voice": "Nữ (US)",
-        "speech_speed": 1.0,
-        "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
-        "username": "Người học",
-        "avatar": "🧑‍🎓",
-        "history_log": [],                     # nhật ký học tập cho thống kê
-        "pron_last_score": None,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
+    if "loaded" not in st.session_state:
+        data = load_data()
+        for k, v in data.items():
             st.session_state[k] = v
+        st.session_state.loaded = True
+        st.session_state.mood = "wave"          # trạng thái biểu cảm hiện tại
+        st.session_state.speaking_id = 0         # đổi số này để trigger animation nói
+        st.session_state.pending_greeting = True  # sẽ hiển thị lời chào khi vừa mở app
+        st.session_state.last_score = None
+        _update_streak_on_open()
+
+
+def _update_streak_on_open():
+    today = str(datetime.date.today())
+    last = st.session_state.last_study_date
+    if last == today:
+        pass  # đã học hôm nay rồi, giữ nguyên streak
+    elif last == str(datetime.date.today() - datetime.timedelta(days=1)):
+        st.session_state.streak += 1
+        st.session_state.last_study_date = today
+    elif last == "":
+        st.session_state.streak = 0
+        st.session_state.last_study_date = today
+    else:
+        st.session_state.streak = 1  # gián đoạn -> tính lại từ đầu
+        st.session_state.last_study_date = today
+
 
 init_state()
 
+
 # ==============================================================================
-# 3. DỮ LIỆU NGÔN NGỮ (từ vựng / ngữ pháp / dịch / chatbot rule-based)
+# 4. CÁ TÍNH AI - KHO CÂU THOẠI (vui vẻ, hài hước, hay trêu, luôn động viên)
 # ==============================================================================
-
-LANGUAGES = {
-    "Tiếng Việt": {"code": "vi", "flag": "🇻🇳"},
-    "Tiếng Anh": {"code": "en", "flag": "🇬🇧"},
-    "Tiếng Trung": {"code": "zh", "flag": "🇨🇳"},
-    "Tiếng Nhật": {"code": "ja", "flag": "🇯🇵", "soon": True},
-    "Tiếng Hàn": {"code": "ko", "flag": "🇰🇷", "soon": True},
-    "Tiếng Pháp": {"code": "fr", "flag": "🇫🇷", "soon": True},
-    "Tiếng Đức": {"code": "de", "flag": "🇩🇪", "soon": True},
-    "Tiếng Tây Ban Nha": {"code": "es", "flag": "🇪🇸", "soon": True},
-}
-
-# Từ vựng mẫu theo ngôn ngữ đích (mở rộng dễ dàng bằng cách thêm dict)
-VOCAB_DB = {
-    "Tiếng Anh": [
-        {"word": "Apple", "phonetic": "/ˈæp.əl/", "meaning": "Quả táo", "example": "I eat an apple every morning.", "emoji": "🍎"},
-        {"word": "Book", "phonetic": "/bʊk/", "meaning": "Quyển sách", "example": "She is reading a book.", "emoji": "📖"},
-        {"word": "Water", "phonetic": "/ˈwɔː.tər/", "meaning": "Nước", "example": "Drink more water every day.", "emoji": "💧"},
-        {"word": "House", "phonetic": "/haʊs/", "meaning": "Ngôi nhà", "example": "This is my house.", "emoji": "🏠"},
-        {"word": "Friend", "phonetic": "/frend/", "meaning": "Bạn bè", "example": "He is my best friend.", "emoji": "🤝"},
-        {"word": "Happy", "phonetic": "/ˈhæp.i/", "meaning": "Hạnh phúc, vui vẻ", "example": "I feel happy today.", "emoji": "😊"},
-        {"word": "Travel", "phonetic": "/ˈtræv.əl/", "meaning": "Du lịch, di chuyển", "example": "I love to travel around the world.", "emoji": "✈️"},
-        {"word": "Study", "phonetic": "/ˈstʌd.i/", "meaning": "Học tập", "example": "I study English every day.", "emoji": "📚"},
-        {"word": "Beautiful", "phonetic": "/ˈbjuː.tɪ.fəl/", "meaning": "Đẹp", "example": "The sunset is beautiful.", "emoji": "🌅"},
-        {"word": "Family", "phonetic": "/ˈfæm.əl.i/", "meaning": "Gia đình", "example": "I love my family.", "emoji": "👨‍👩‍👧‍👦"},
+PERSONA = {
+    "greet_new": [
+        "Xin chào! Mình là {char_name} 🐾 — bạn đồng hành học ngoại ngữ của bạn đây! Bạn muốn học ngôn ngữ nào nào?",
+        "Yo yo! Mình là {char_name}! Rất vui được làm quen. Bạn muốn chinh phục ngôn ngữ nào cùng mình?",
     ],
-    "Tiếng Trung": [
-        {"word": "你好", "phonetic": "nǐ hǎo", "meaning": "Xin chào", "example": "你好，很高兴认识你。", "emoji": "👋"},
-        {"word": "谢谢", "phonetic": "xiè xiè", "meaning": "Cảm ơn", "example": "谢谢你的帮助。", "emoji": "🙏"},
-        {"word": "朋友", "phonetic": "péng yǒu", "meaning": "Bạn bè", "example": "他是我的朋友。", "emoji": "🤝"},
-        {"word": "水", "phonetic": "shuǐ", "meaning": "Nước", "example": "请给我一杯水。", "emoji": "💧"},
-        {"word": "学习", "phonetic": "xué xí", "meaning": "Học tập", "example": "我每天学习中文。", "emoji": "📚"},
-        {"word": "家", "phonetic": "jiā", "meaning": "Gia đình / nhà", "example": "我爱我的家。", "emoji": "🏠"},
-        {"word": "高兴", "phonetic": "gāo xìng", "meaning": "Vui vẻ", "example": "我今天很高兴。", "emoji": "😊"},
-        {"word": "旅行", "phonetic": "lǚ xíng", "meaning": "Du lịch", "example": "我喜欢旅行。", "emoji": "✈️"},
+    "greet_returning": [
+        "Chào mừng quay lại, {name}! 🎉 Hôm nay là ngày học thứ {streak} liên tiếp của bạn đấy. Lần trước chúng ta học đến '{lesson_title}'. Tiếp tục nhé?",
+        "Ơ, {name} về rồi kìa! 😄 Streak {streak} ngày rồi đó nha, đừng để đứt gánh giữa đường! Mình đang chờ ở bài '{lesson_title}'.",
     ],
-    "Tiếng Việt": [
-        {"word": "Xin chào", "phonetic": "sin tʃaːʊ˨˩", "meaning": "Lời chào hỏi", "example": "Xin chào, bạn khỏe không?", "emoji": "👋"},
-        {"word": "Cảm ơn", "phonetic": "kaːm˧˥ əːn˧˧", "meaning": "Thank you", "example": "Cảm ơn bạn rất nhiều.", "emoji": "🙏"},
-        {"word": "Gia đình", "phonetic": "zaː˧˧ ɗiŋ˨˩", "meaning": "Family", "example": "Tôi yêu gia đình tôi.", "emoji": "👨‍👩‍👧‍👦"},
+    "ask_name": [
+        "Được rồi! Trước khi bắt đầu, mình gọi bạn là gì cho thân mật nè?",
+        "Ok chốt đơn {lang}! À mà mình chưa biết tên bạn, xưng hô sao cho tiện đây?",
     ],
-}
-
-GRAMMAR_DB = {
-    "Tiếng Anh": [
-        {
-            "title": "Thì hiện tại đơn (Present Simple)",
-            "explain": "Dùng để diễn tả thói quen, sự thật hiển nhiên. Công thức: S + V(s/es) + O.",
-            "example": "She goes to school every day.",
-            "quiz_q": "Chọn câu đúng thì hiện tại đơn:",
-            "quiz_options": ["He go to work.", "He goes to work.", "He going to work.", "He gone to work."],
-            "quiz_answer": 1,
-        },
-        {
-            "title": "Thì hiện tại tiếp diễn (Present Continuous)",
-            "explain": "Diễn tả hành động đang xảy ra. Công thức: S + am/is/are + V-ing.",
-            "example": "I am learning English now.",
-            "quiz_q": "Chọn câu đúng thì hiện tại tiếp diễn:",
-            "quiz_options": ["She is study now.", "She studying now.", "She is studying now.", "She studies now."],
-            "quiz_answer": 2,
-        },
-        {
-            "title": "Thì quá khứ đơn (Past Simple)",
-            "explain": "Diễn tả hành động đã xảy ra và kết thúc trong quá khứ. Công thức: S + V-ed/V2.",
-            "example": "I visited my grandmother last week.",
-            "quiz_q": "Chọn dạng quá khứ đúng của 'go':",
-            "quiz_options": ["goed", "went", "gone", "going"],
-            "quiz_answer": 1,
-        },
+    "confirm_language": [
+        "Được rồi! Hôm nay chúng ta sẽ bắt đầu từ bài đầu tiên nhé, {name}!",
+        "Yeah! {lang} có mình đồng hành là auto dễ luôn. Bắt đầu bài đầu tiên thôi!",
     ],
-    "Tiếng Trung": [
-        {
-            "title": "Cấu trúc câu cơ bản (主谓宾)",
-            "explain": "Chủ ngữ + Vị ngữ + Tân ngữ, giống tiếng Việt: 我 (tôi) + 吃 (ăn) + 苹果 (táo).",
-            "example": "我吃苹果。 (Wǒ chī píngguǒ - Tôi ăn táo.)",
-            "quiz_q": "Câu nào đúng cấu trúc?",
-            "quiz_options": ["苹果我吃", "我吃苹果", "吃我苹果", "苹果吃我"],
-            "quiz_answer": 1,
-        },
-        {
-            "title": "Trợ từ 了 (le) chỉ hành động hoàn thành",
-            "explain": "了 đặt sau động từ để diễn tả hành động đã xảy ra/hoàn thành.",
-            "example": "我吃了。 (Wǒ chī le - Tôi đã ăn rồi.)",
-            "quiz_q": "了 dùng để diễn tả điều gì?",
-            "quiz_options": ["Tương lai", "Hành động hoàn thành", "Nghi vấn", "Phủ định"],
-            "quiz_answer": 1,
-        },
+    "present_word": [
+        "Nghe mình đọc nè: '{phrase}' — nghĩa là '{meaning}'. Đọc lại thử xem!",
+        "Từ này hay lắm nè: '{phrase}' ({meaning}). Bạn đọc lại cho mình nghe nào!",
+    ],
+    "correct": [
+        "Chuẩn không cần chỉnh luôn! 🎯 Giỏi ghê!",
+        "Ơ hay đó! Phát âm nghe xịn phết! 😎",
+        "Đỉnh của chóp! Tiếp tục phát huy nhé!",
+    ],
+    "close_enough": [
+        "Suýt chuẩn rồi đó! Chỉ thiếu xíu xiu nữa thôi. Thử lại nhé!",
+        "Gần đúng rồi nè! Cố lên xíu nữa là ăn điểm tuyệt đối!",
+    ],
+    "wrong": [
+        "Hmm, chưa đúng lắm đâu 😅 Để mình đọc lại cho nghe, thử lần nữa nhé!",
+        "Ấy ấy chưa trúng rồi! Không sao, nghe kỹ lại rồi đọc lại nào!",
+    ],
+    "lazy_tease": [
+        "Hừm... bạn định lười thật à? Thôi học với mình 5 phút thôi, biết đâu lại học luôn 30 phút đó 😏",
+        "Lười hả? Được thôi, vậy mình... đợi bạn ở đây luôn 🙂 Nhưng mà 5 phút thôi cũng được, thử không?",
+    ],
+    "encourage_progress": [
+        "Hôm nay tiến bộ hơn hôm qua đấy! Mình có để ý nhé! 👀✨",
+        "Bạn học nhanh ghê, mình phải tăng độ khó lên rồi đây!",
+    ],
+    "many_mistakes": [
+        "Không sao đâu. Mình sẽ chậm lại để học chắc hơn nhé, đừng nản!",
+        "Sai là chuyện thường mà, ngay cả mình đôi lúc còn lú nữa là! Học tiếp thôi!",
+    ],
+    "level_up": [
+        "Chúc mừng! 🥳 Bạn vừa lên Level {level} — '{lesson_title}'. Xịn sò quá đi!",
+        "Ting ting! 🔔 Level {level} mở khoá: '{lesson_title}'. Cùng chinh phục nào!",
+    ],
+    "idle_prompt": [
+        "Bạn còn ở đó không? Mình đang chờ đây 👀",
+        "Ơ... đi đâu mất rồi ta? Mình vẫn chờ bạn đọc bài nè!",
+    ],
+    "not_understand_ack": [
+        "À, để mình giải thích bằng tiếng Việt nhé:",
+        "Ok không hiểu thì mình dịch giúp nè:",
+    ],
+    "farewell": [
+        "Hẹn gặp lại nhé! Nhớ quay lại học tiếp với mình đó! 👋",
+        "Bye bye! Đừng để streak bị đứt nha, mình chờ bạn quay lại!",
+    ],
+    "roleplay_intro": [
+        "Giờ mình đóng vai '{scenario}' nhé, còn bạn cứ thử dùng {lang} nói chuyện với mình xem sao!",
+        "Hehe, tới màn nhập vai rồi! Mình sẽ là '{scenario}'. Bạn thử giao tiếp bằng {lang} nhé!",
+    ],
+    "ask_new_or_review": [
+        "Bạn muốn ôn bài cũ hay học từ mới nào? 🤔",
     ],
 }
 
-READING_DB = {
-    "Tiếng Anh": [
-        {"title": "My Family", "text": "Hello, my name is Anna. I live in a small house with my mom, dad, and my little brother. Every morning, we have breakfast together. My mom makes delicious pancakes. After breakfast, I go to school by bus. I love my family very much."},
-        {"title": "A Trip to the Beach", "text": "Last summer, my friends and I went to the beach. The water was clear and blue. We swam, played volleyball, and built a big sandcastle. In the evening, we watched the beautiful sunset together. It was one of the best days of my life."},
-    ],
-    "Tiếng Trung": [
-        {"title": "我的一天", "text": "我每天早上七点起床。吃完早饭以后，我去学校。中午和朋友们一起吃午饭。下午上完课，我回家做作业。晚上，我喜欢和家人一起看电视。"},
-    ],
-}
 
-LISTENING_DB = {
-    "Tiếng Anh": [
-        "Good morning! How are you today?",
-        "I would like a cup of coffee, please.",
-        "What time does the train leave?",
-        "Can you help me find the nearest hospital?",
-        "She is reading a very interesting book.",
-    ],
-    "Tiếng Trung": [
-        "早上好，你今天怎么样？",
-        "我想要一杯咖啡。",
-        "火车几点开？",
-        "你能帮我找最近的医院吗？",
-    ],
-}
+def persona_pick(category, **kwargs):
+    text = random.choice(PERSONA[category])
+    try:
+        return text.format(**kwargs)
+    except Exception:
+        return text
 
-SPEAKING_QUESTIONS = {
-    "Tiếng Anh": [
-        "What is your name and where are you from?",
-        "What do you usually do on weekends?",
-        "Can you describe your favorite food?",
-        "What are your hobbies?",
-    ],
-    "Tiếng Trung": [
-        "你叫什么名字？你是哪里人？",
-        "周末你通常做什么？",
-        "你最喜欢的食物是什么？",
-    ],
-}
 
-WRITING_TOPICS = {
-    "Tiếng Anh": [
-        "Describe your best friend.",
-        "Write about your daily routine.",
-        "What is your dream job? Why?",
-        "Describe your hometown.",
-    ],
-    "Tiếng Trung": [
-        "描述一下你最好的朋友。",
-        "写一写你的日常生活。",
-        "你的梦想工作是什么？",
-    ],
-}
+def strip_accents(s):
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
-# Từ điển dịch đơn giản (offline demo) - có thể thay bằng API dịch thật
-SIMPLE_DICT = {
-    ("Tiếng Việt", "Tiếng Anh"): {
-        "xin chào": "hello", "cảm ơn": "thank you", "tạm biệt": "goodbye",
-        "tôi yêu bạn": "i love you", "bạn khỏe không": "how are you",
-        "gia đình": "family", "bạn bè": "friend", "nước": "water",
-        "sách": "book", "đẹp": "beautiful", "học tập": "study",
-        "du lịch": "travel", "vui vẻ": "happy", "nhà": "house",
-    },
-    ("Tiếng Việt", "Tiếng Trung"): {
-        "xin chào": "你好", "cảm ơn": "谢谢", "tạm biệt": "再见",
-        "gia đình": "家", "bạn bè": "朋友", "nước": "水",
-        "học tập": "学习", "vui vẻ": "高兴", "du lịch": "旅行",
-    },
-}
-# Tạo chiều ngược lại tự động
-_reverse_dict = {}
-for (a, b), d in SIMPLE_DICT.items():
-    _reverse_dict[(b, a)] = {v: k for k, v in d.items()}
-SIMPLE_DICT.update(_reverse_dict)
+
+def normalize_text(s):
+    return strip_accents(s).lower().strip().replace("?", "").replace(".", "").replace(",", "")
+
+
+def detect_language_intent(text):
+    t = normalize_text(text)
+    for lang, meta in LANGUAGES.items():
+        for kw in meta["keywords"]:
+            if strip_accents(kw) in t:
+                return lang
+    return None
+
+
+def detect_lazy(text):
+    t = normalize_text(text)
+    return any(k in t for k in ["luoi", "khong muon hoc", "met qua", "chan qua", "nghi hoc"])
+
+
+def detect_not_understand(text):
+    t = normalize_text(text)
+    return any(k in t for k in ["khong hieu", "nghia la gi", "la gi vay", "giai thich"])
+
+
+def detect_review_request(text):
+    t = normalize_text(text)
+    return any(k in t for k in ["on bai cu", "on lai", "bai cu"])
+
+
+def detect_new_lesson_request(text):
+    t = normalize_text(text)
+    return any(k in t for k in ["bai moi", "hoc moi", "tiep tuc", "hoc tiep"])
+
+
+def detect_roleplay_request(text):
+    t = normalize_text(text)
+    return any(k in t for k in ["hoi thoai", "nhap vai", "luyen noi chuyen", "roleplay"])
+
+
+def score_pronunciation_attempt(user_text, target_phrase):
+    """So khớp gần đúng (demo). Trả điểm 0-100 dựa trên độ giống ký tự."""
+    a = normalize_text(user_text)
+    b = normalize_text(target_phrase)
+    if not a:
+        return 0
+    if a == b:
+        return random.randint(93, 100)
+    # tính điểm tương đồng đơn giản theo ký tự chung
+    common = sum(1 for ch in a if ch in b)
+    ratio = common / max(len(b), 1)
+    base = int(ratio * 80) + random.randint(0, 15)
+    return max(20, min(base, 92))
 
 
 # ==============================================================================
-# 4. AI ENGINE - Chatbot (ưu tiên OpenAI API thật, fallback rule-based)
+# 5. AI ENGINE - ƯU TIÊN OPENAI API THẬT, FALLBACK RULE-BASED CÓ CÁ TÍNH
 # ==============================================================================
 def call_openai_api(messages, api_key):
-    """Gọi OpenAI Chat Completions API thật (chỉ chạy khi có API key hợp lệ)."""
     try:
         import requests
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "gpt-4o-mini",
-                "messages": messages,
-                "temperature": 0.8,
-                "max_tokens": 300,
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": "gpt-4o-mini", "messages": messages, "temperature": 0.85, "max_tokens": 250},
             timeout=20,
         )
         if resp.status_code == 200:
-            data = resp.json()
-            return data["choices"][0]["message"]["content"].strip()
-        else:
-            return None
+            return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception:
+        pass
+    return None
+
+
+def build_system_prompt():
+    char = ANIMALS[st.session_state.character]["name"]
+    lang = st.session_state.target_lang or "chưa chọn"
+    return (
+        f"Bạn là {char}, một AI đồng hành dạy ngoại ngữ, tính cách vui vẻ, hài hước, hay trêu đùa nhẹ nhàng "
+        f"nhưng luôn động viên tích cực, giống bạn thân chứ không phải trợ lý khô khan. "
+        f"Học viên tên là '{st.session_state.name or 'bạn học'}', đang học {lang}, "
+        f"hiện ở Level {st.session_state.level}, streak {st.session_state.streak} ngày. "
+        f"Nếu đang ở chế độ hội thoại nhập vai '{st.session_state.roleplay_scenario}', chỉ dùng {lang} để nói, "
+        f"và nếu học viên nói 'không hiểu' thì giải thích lại bằng tiếng Việt. Trả lời ngắn gọn, tự nhiên, có cảm xúc."
+    )
+
+
+def get_ai_reply(user_text):
+    api_key = st.session_state.openai_api_key
+    history = st.session_state.chat_log[-10:]
+    if api_key:
+        messages = [{"role": "system", "content": build_system_prompt()}]
+        for h in history:
+            role = "user" if h["role"] == "user" else "assistant"
+            messages.append({"role": role, "content": h["text"]})
+        messages.append({"role": "user", "content": user_text})
+        real = call_openai_api(messages, api_key)
+        if real:
+            return real
+    # ---- fallback rule-based (không cần API) ----
+    return rule_based_reply(user_text)
+
+
+def rule_based_reply(user_text):
+    """'Bộ não' giả lập có cá tính, biết dẫn dắt bài học theo state hiện tại."""
+    stage = st.session_state.onboard_stage
+
+    # --- Giai đoạn onboarding: hỏi ngôn ngữ ---
+    if stage == "ask_language":
+        lang = detect_language_intent(user_text)
+        if lang:
+            st.session_state.target_lang = lang
+            st.session_state.onboard_stage = "ask_name"
+            st.session_state.mood = "happy"
+            return persona_pick("ask_name", lang=lang)
+        else:
+            st.session_state.mood = "thinking"
+            return "Mình chưa nghe rõ bạn muốn học ngôn ngữ nào 🤔 Thử nói ví dụ: 'Tôi muốn học tiếng Trung' xem!"
+
+    # --- Giai đoạn onboarding: hỏi tên ---
+    if stage == "ask_name":
+        name = user_text.strip()
+        name = re.sub(r"(?i)^(mình|tôi|em|anh|chị)\s*(tên|là)?\s*", "", name).strip() or name
+        st.session_state.name = name[:30] if name else "bạn học"
+        st.session_state.onboard_stage = "lesson"
+        st.session_state.mode = "lesson"
+        st.session_state.mood = "wave"
+        return persona_pick("confirm_language", name=st.session_state.name, lang=st.session_state.target_lang)
+
+    # --- Chế độ học bài (lesson) ---
+    if st.session_state.mode == "lesson":
+        return handle_lesson_input(user_text)
+
+    # --- Chế độ hội thoại nhập vai ---
+    if st.session_state.mode == "roleplay":
+        return handle_roleplay_input(user_text)
+
+    # --- Chế độ tự do ---
+    st.session_state.mood = "happy"
+    return random.choice([
+        "Ồ thú vị đấy! Kể mình nghe thêm đi!",
+        "Haha được đó! Rồi sao nữa?",
+        "Nghe hay ghê! Bạn còn muốn học thêm gì không?",
+    ])
+
+
+def current_level_data():
+    lang = st.session_state.target_lang
+    plan = LESSON_DB.get(lang, [])
+    idx = st.session_state.level - 1
+    if 0 <= idx < len(plan):
+        return plan[idx]
+    return None
+
+
+def current_item():
+    level_data = current_level_data()
+    if not level_data:
         return None
+    items = level_data["items"]
+    idx = st.session_state.item_index
+    if 0 <= idx < len(items):
+        return items[idx]
+    return None
 
 
-# Chatbot giả lập (rule-based) - hoạt động không cần internet/API key
-FAKE_BOT_REPLIES = {
-    "Tiếng Anh": {
-        "greet": ["Hi there! 😊 How are you today?", "Hello! Nice to meet you. What's your name?", "Hey! Great to see you practicing English!"],
-        "how_are_you": ["I'm doing great, thanks for asking! What did you do today?", "I'm good! How about you?"],
-        "fine": ["Great to hear! What did you do today?", "Awesome! Tell me more about your day."],
-        "name": ["Nice to meet you! I'm your AI language buddy 🤖", "That's a lovely name!"],
-        "bye": ["Goodbye! See you next time. Keep practicing! 👋", "Bye bye! Great job today!"],
-        "thanks": ["You're welcome! Keep up the good work! 💪", "No problem at all! 😊"],
-        "default": [
-            "That's interesting! Can you tell me more?",
-            "I see! What else would you like to talk about?",
-            "Cool! Let's keep practicing. Can you make another sentence?",
-            "Nice! How do you feel about that?",
-            "Got it! What did you do after that?",
-        ],
+def advance_item():
+    level_data = current_level_data()
+    st.session_state.item_index += 1
+    if st.session_state.item_index >= len(level_data["items"]):
+        # hết level -> lên level mới
+        st.session_state.level += 1
+        st.session_state.item_index = 0
+        new_level = current_level_data()
+        if new_level is None:
+            # hết giáo trình -> chuyển sang hội thoại tự do / nhập vai
+            st.session_state.mode = "roleplay"
+            st.session_state.roleplay_scenario = random.choice(ROLEPLAY_SCENARIOS)
+            st.session_state.mood = "surprised"
+            return "level_finished"
+        st.session_state.mood = "happy"
+        return "level_up"
+    return "next_item"
+
+
+def handle_lesson_input(user_text):
+    if detect_lazy(user_text):
+        st.session_state.mood = "sad"
+        return persona_pick("lazy_tease")
+
+    if detect_not_understand(user_text):
+        item = current_item()
+        st.session_state.mood = "thinking"
+        if item:
+            return persona_pick("not_understand_ack") + f" '{item['phrase']}' nghĩa là '{item['meaning']}' đó!"
+        return persona_pick("not_understand_ack")
+
+    if detect_roleplay_request(user_text):
+        st.session_state.mode = "roleplay"
+        st.session_state.roleplay_scenario = random.choice(ROLEPLAY_SCENARIOS)
+        st.session_state.mood = "surprised"
+        return persona_pick("roleplay_intro", scenario=st.session_state.roleplay_scenario, lang=st.session_state.target_lang)
+
+    if detect_review_request(user_text):
+        st.session_state.item_index = max(0, st.session_state.item_index - 1)
+        st.session_state.mood = "thinking"
+        item = current_item()
+        return "Ôn lại bài trước nhé! " + persona_pick("present_word", phrase=item["phrase"], meaning=item["meaning"])
+
+    item = current_item()
+    if not item:
+        return "Hình như bạn đã học hết giáo trình hiện có rồi! Mình chuyển qua hội thoại tự do nhé 😄"
+
+    score = score_pronunciation_attempt(user_text, item["phrase"])
+    st.session_state.last_score = score
+    word = item["phrase"]
+
+    if score >= 85:
+        st.session_state.mood = "happy"
+        st.session_state.words_learned = list(set(st.session_state.words_learned + [word]))
+        feedback = persona_pick("correct")
+        result = advance_item()
+        if result == "level_up":
+            level_data = current_level_data()
+            feedback += " " + persona_pick("level_up", level=st.session_state.level, lesson_title=level_data["title"])
+            next_item = current_item()
+            feedback += " " + persona_pick("present_word", phrase=next_item["phrase"], meaning=next_item["meaning"])
+        elif result == "level_finished":
+            feedback += (" Bạn vừa hoàn thành hết giáo trình cơ bản rồi đó! 🎓 Giờ mình chuyển sang chế độ "
+                         f"hội thoại nhập vai '{st.session_state.roleplay_scenario}' để luyện phản xạ thật nhé!")
+        else:
+            next_item = current_item()
+            feedback += " Từ tiếp theo nè: " + persona_pick("present_word", phrase=next_item["phrase"], meaning=next_item["meaning"])
+        return feedback
+    elif score >= 55:
+        st.session_state.mood = "thinking"
+        st.session_state.mistakes[word] = st.session_state.mistakes.get(word, 0) + 1
+        return persona_pick("close_enough") + f" (Điểm: {score}/100)"
+    else:
+        st.session_state.mood = "sad"
+        st.session_state.mistakes[word] = st.session_state.mistakes.get(word, 0) + 1
+        extra = ""
+        if st.session_state.mistakes[word] >= 2:
+            extra = " " + persona_pick("many_mistakes")
+        return persona_pick("wrong") + f" (Điểm: {score}/100){extra} Nghe lại: '{word}' ({item['meaning']})."
+
+
+ROLEPLAY_LINES = {
+    "Nhà hàng": {
+        "Tiếng Anh": ["Welcome! What would you like to order today?", "Would you like something to drink?", "Here is your food, enjoy your meal!"],
+        "Tiếng Trung": ["欢迎光临！你想点什么？", "要喝点什么吗？", "这是你的菜，请慢用！"],
     },
-    "Tiếng Trung": {
-        "greet": ["你好！😊 你今天怎么样？", "你好！很高兴认识你！", "嗨！很高兴你在练习中文！"],
-        "how_are_you": ["我很好，谢谢！你今天做了什么？", "我很好！你呢？"],
-        "fine": ["太好了！你今天做了什么？", "真棒！多告诉我一些吧。"],
-        "name": ["很高兴认识你！我是你的AI语言伙伴🤖", "这个名字很好听！"],
-        "bye": ["再见！下次再聊，继续加油！👋", "拜拜！你今天做得很好！"],
-        "thanks": ["不客气！继续加油！💪", "没关系！😊"],
-        "default": [
-            "真有意思！能告诉我更多吗？",
-            "我明白了！你还想聊什么？",
-            "很好！我们继续练习吧，你能再造一个句子吗？",
-            "不错！你感觉怎么样？",
-        ],
+    "Du lịch": {
+        "Tiếng Anh": ["Excuse me, do you need directions?", "This place is famous for its old town.", "Have a wonderful trip!"],
+        "Tiếng Trung": ["请问你需要问路吗？", "这个地方以老城区出名。", "祝你旅途愉快！"],
+    },
+    "Phỏng vấn": {
+        "Tiếng Anh": ["Can you tell me about yourself?", "What are your strengths?", "Why do you want this job?"],
+        "Tiếng Trung": ["能介绍一下你自己吗？", "你的优点是什么？", "你为什么想要这份工作？"],
     },
 }
 
 
-def detect_intent(text, lang):
-    t = text.lower().strip()
-    if lang == "Tiếng Anh":
-        if any(w in t for w in ["hi", "hello", "hey"]):
-            return "greet"
-        if "how are you" in t:
-            return "how_are_you"
-        if any(w in t for w in ["i'm fine", "i am fine", "good", "great", "im fine"]):
-            return "fine"
-        if "my name is" in t or "i am " in t:
-            return "name"
-        if any(w in t for w in ["bye", "goodbye", "see you"]):
-            return "bye"
-        if "thank" in t:
-            return "thanks"
-    elif lang == "Tiếng Trung":
-        if "你好" in t or "嗨" in t:
-            return "greet"
-        if "怎么样" in t:
-            return "how_are_you"
-        if "很好" in t or "不错" in t:
-            return "fine"
-        if "我叫" in t or "我是" in t:
-            return "name"
-        if "再见" in t or "拜拜" in t:
-            return "bye"
-        if "谢谢" in t:
-            return "thanks"
-    return "default"
-
-
-def get_fake_ai_response(user_text, lang):
-    intent = detect_intent(user_text, lang)
-    bank = FAKE_BOT_REPLIES.get(lang, FAKE_BOT_REPLIES["Tiếng Anh"])
-    options = bank.get(intent, bank["default"])
-    return random.choice(options)
-
-
-def get_ai_response(user_text, lang, history):
-    """Hàm trung tâm sinh phản hồi AI. Ưu tiên OpenAI API thật nếu có key."""
-    api_key = st.session_state.get("openai_api_key", "")
-    if api_key:
-        sys_prompt = (
-            f"You are a friendly, encouraging language tutor AI. The learner is a Vietnamese "
-            f"native speaker practicing {lang}. Reply ONLY in {lang}, keep replies short (1-3 "
-            f"sentences), natural, and ask a simple follow-up question to keep the conversation going."
-        )
-        messages = [{"role": "system", "content": sys_prompt}]
-        for h in history[-8:]:
-            role = "user" if h["role"] == "user" else "assistant"
-            messages.append({"role": role, "content": h["content"]})
-        messages.append({"role": "user", "content": user_text})
-        real_reply = call_openai_api(messages, api_key)
-        if real_reply:
-            return real_reply
-    # fallback: chatbot giả lập
-    return get_fake_ai_response(user_text, lang)
-
-
-def fake_translate(text, src, dst):
-    """Dịch giả lập offline dựa trên từ điển mẫu; nếu có API key sẽ có thể thay bằng API dịch thật."""
-    key = (src, dst)
-    d = SIMPLE_DICT.get(key, {})
-    t = text.strip().lower()
-    if t in d:
-        return d[t]
-    # thử dịch từng từ
-    words = t.split()
-    translated_words = [d.get(w, w) for w in words]
-    if any(w in d for w in words):
-        return " ".join(translated_words)
-    return f"[Bản dịch demo] {text} ({src} ➜ {dst})"
-
-
-def pronunciation_score_fake(_audio_or_text=None):
-    """Chấm điểm phát âm giả lập (thực tế nên dùng model chấm điểm phát âm/ASR)."""
-    score = random.randint(70, 99)
-    good_sounds = random.sample(["a", "e", "i", "o", "th", "sh"], k=3)
-    bad_sounds = random.sample(["r", "l", "v", "z", "ng"], k=2)
-    return score, good_sounds, bad_sounds
+def handle_roleplay_input(user_text):
+    if detect_not_understand(user_text):
+        st.session_state.mood = "thinking"
+        return persona_pick("not_understand_ack") + " (giải thích ngữ cảnh) Đây là tình huống '" + st.session_state.roleplay_scenario + "', cứ trả lời tự nhiên theo vai của bạn nhé!"
+    scenario = st.session_state.roleplay_scenario
+    lang = st.session_state.target_lang
+    lines = ROLEPLAY_LINES.get(scenario, {}).get(lang)
+    st.session_state.mood = random.choice(["happy", "thinking", "surprised"])
+    if lines:
+        return random.choice(lines)
+    return f"(nhập vai '{scenario}' bằng {lang}) " + random.choice([
+        "Interesting! Tell me more.", "Haha, thú vị đấy! Tiếp tục nào.", "Được đó, nói tiếp xem sao!"
+    ])
 
 
 # ==============================================================================
-# 5. TEXT-TO-SPEECH / SPEECH-TO-TEXT qua trình duyệt (Web Speech API - JS)
-# ==============================================================================
-def tts_html(text, lang_code="en-US", rate=1.0):
-    """Nhúng JS dùng Web Speech API để đọc văn bản bằng giọng nói của trình duyệt."""
-    safe_text = json.dumps(text)
-    html = f"""
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button onclick='
-        const u = new SpeechSynthesisUtterance({safe_text});
-        u.lang = "{lang_code}";
-        u.rate = {rate};
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
-      ' style="
-        background: linear-gradient(135deg,#7F5AF0,#2CB67D);
-        border:none;color:white;padding:10px 18px;border-radius:14px;
-        cursor:pointer;font-weight:600;box-shadow:0 4px 14px rgba(127,90,240,.4);
-        transition:transform .15s ease;
-      " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-        🔊 Nghe phát âm
-      </button>
-    </div>
-    """
-    st.components.v1.html(html, height=60)
-
-
-def mic_input_html(target_lang_code="en-US", key="mic1"):
-    """Nhúng JS dùng Web Speech API để ghi âm & nhận diện giọng nói ngay trong trình duyệt.
-    Kết quả nhận diện được hiển thị trực tiếp trong khung HTML (demo trình duyệt)."""
-    html = f"""
-    <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
-      <button id="micBtn_{key}" onclick='
-        try {{
-          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-          const rec = new SR();
-          rec.lang = "{target_lang_code}";
-          rec.interimResults = false;
-          document.getElementById("micResult_{key}").innerText = "🎙️ Đang nghe...";
-          rec.onresult = function(e) {{
-            const text = e.results[0][0].transcript;
-            document.getElementById("micResult_{key}").innerText = "📝 " + text;
-          }};
-          rec.onerror = function(e) {{
-            document.getElementById("micResult_{key}").innerText = "⚠️ Không nhận diện được (cần trình duyệt Chrome + micro).";
-          }};
-          rec.start();
-        }} catch(err) {{
-          document.getElementById("micResult_{key}").innerText = "⚠️ Trình duyệt không hỗ trợ Speech Recognition.";
-        }}
-      ' style="
-        background: linear-gradient(135deg,#F25F4C,#FF8906);
-        border:none;color:white;padding:14px;border-radius:50%;
-        width:60px;height:60px;font-size:22px;cursor:pointer;
-        box-shadow:0 4px 18px rgba(242,95,76,.5);
-      ">🎤</button>
-      <div id="micResult_{key}" style="opacity:.85;font-style:italic;">Bấm micro và nói...</div>
-    </div>
-    """
-    st.components.v1.html(html, height=110)
-
-
-# ==============================================================================
-# 6. GIAO DIỆN - CSS (Glassmorphism + Gradient + Dark/Light + Animation)
+# 6. GIAO DIỆN - CSS + NHÂN VẬT SVG HOẠT HÌNH
 # ==============================================================================
 def inject_css():
     dark = st.session_state.theme == "dark"
-    font_size_map = {"Nhỏ": "14px", "Vừa": "16px", "Lớn": "18px"}
-    fsize = font_size_map.get(st.session_state.font_size, "16px")
-
-    if dark:
-        bg = "linear-gradient(135deg,#0f0c29,#302b63,#24243e)"
-        card_bg = "rgba(255,255,255,0.06)"
-        text_color = "#EDEDED"
-        border_color = "rgba(255,255,255,0.15)"
-        sidebar_bg = "rgba(15,12,41,0.85)"
-    else:
-        bg = "linear-gradient(135deg,#e0eafc,#cfdef3,#f6f9ff)"
-        card_bg = "rgba(255,255,255,0.55)"
-        text_color = "#1c1c2b"
-        border_color = "rgba(0,0,0,0.08)"
-        sidebar_bg = "rgba(255,255,255,0.75)"
+    bg = "linear-gradient(160deg,#0f1020,#1b1836,#241b3f)" if dark else "linear-gradient(160deg,#fef6ff,#eaf2ff,#f7f9ff)"
+    text_color = "#F2F0FF" if dark else "#242233"
+    bubble_bg = "rgba(255,255,255,0.08)" if dark else "rgba(255,255,255,0.85)"
+    bubble_border = "rgba(255,255,255,0.2)" if dark else "rgba(0,0,0,0.08)"
+    panel_bg = "rgba(255,255,255,0.06)" if dark else "rgba(255,255,255,0.6)"
 
     st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Quicksand:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {{
-        font-family: 'Poppins', sans-serif !important;
-        font-size: {fsize};
-    }}
+    html, body, [class*="css"] {{ font-family: 'Quicksand', sans-serif !important; }}
+    .stApp {{ background: {bg}; background-attachment: fixed; color: {text_color}; }}
+    #MainMenu, footer, header {{ visibility: hidden; }}
 
-    .stApp {{
-        background: {bg};
-        background-attachment: fixed;
-        color: {text_color};
+    .buddy-name {{
+        text-align:center; font-family:'Baloo 2', sans-serif; font-weight:800; font-size:26px;
+        background: linear-gradient(90deg,#FF8FAB,#7F5AF0,#2CB67D);
+        -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        background-size:200% auto; animation: shine 5s linear infinite; margin-bottom:2px;
     }}
+    @keyframes shine {{ to {{ background-position: 200% center; }} }}
 
-    section[data-testid="stSidebar"] {{
-        background: {sidebar_bg} !important;
-        backdrop-filter: blur(18px);
-        border-right: 1px solid {border_color};
-    }}
+    .buddy-sub {{ text-align:center; opacity:.65; font-size:13px; margin-bottom:10px; }}
 
-    /* Glass card */
-    .glass-card {{
-        background: {card_bg};
-        border-radius: 22px;
-        padding: 26px;
-        border: 1px solid {border_color};
-        backdrop-filter: blur(16px);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-        margin-bottom: 20px;
-        animation: fadeIn .6s ease;
-        transition: transform .25s ease, box-shadow .25s ease;
-    }}
-    .glass-card:hover {{
-        transform: translateY(-4px);
-        box-shadow: 0 14px 36px rgba(0,0,0,0.28);
-    }}
-
-    @keyframes fadeIn {{
-        from {{ opacity: 0; transform: translateY(14px); }}
-        to {{ opacity: 1; transform: translateY(0); }}
-    }}
-
-    .hero-title {{
-        font-size: 46px;
-        font-weight: 800;
-        background: linear-gradient(90deg,#7F5AF0,#2CB67D,#FF8906);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-size: 200% auto;
-        animation: shine 4s linear infinite;
-    }}
-    @keyframes shine {{
-        to {{ background-position: 200% center; }}
-    }}
-
-    .subtitle {{
-        font-size: 18px;
-        opacity: .85;
-        margin-bottom: 26px;
-    }}
-
-    .badge {{
-        display:inline-block;
-        padding: 6px 14px;
-        border-radius: 999px;
-        background: linear-gradient(135deg,#7F5AF0,#2CB67D);
-        color: white;
+    /* ---- Bong bóng hội thoại ---- */
+    .speech-bubble {{
+        background: {bubble_bg};
+        border: 1px solid {bubble_border};
+        backdrop-filter: blur(14px);
+        border-radius: 24px;
+        padding: 16px 22px;
+        max-width: 480px;
+        margin: 0 auto 6px auto;
+        text-align: center;
+        font-size: 17px;
         font-weight: 600;
-        font-size: 13px;
-        margin-right: 6px;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+        animation: bubbleIn .35s ease;
+        position: relative;
+    }}
+    .speech-bubble:after {{
+        content:""; position:absolute; left:50%; bottom:-9px; transform:translateX(-50%);
+        border-width: 10px 9px 0 9px; border-style: solid;
+        border-color: {bubble_bg} transparent transparent transparent;
+    }}
+    @keyframes bubbleIn {{ from {{ opacity:0; transform: translateY(10px) scale(.95);}} to {{opacity:1; transform:translateY(0) scale(1);}} }}
+
+    /* ---- Nhân vật ---- */
+    .character-wrap {{
+        display:flex; justify-content:center; margin: 6px 0 4px 0;
+        animation: floaty 3.2s ease-in-out infinite;
+    }}
+    @keyframes floaty {{ 0%,100% {{ transform: translateY(0);}} 50% {{ transform: translateY(-12px);}} }}
+
+    .char-eye {{ transform-origin: center; animation: blink 4.6s infinite; }}
+    @keyframes blink {{ 0%,92%,100% {{ transform: scaleY(1);}} 95% {{ transform: scaleY(0.12);}} }}
+
+    .char-mouth.talking {{ animation: talk .35s ease-in-out 7; transform-origin: center; }}
+    @keyframes talk {{ 0%,100% {{ transform: scaleY(1);}} 50% {{ transform: scaleY(1.7);}} }}
+
+    .char-hand-wave {{ transform-origin: 70% 20%; animation: wave 1s ease-in-out 3; }}
+    @keyframes wave {{ 0%,100% {{ transform: rotate(0deg);}} 25% {{ transform: rotate(-18deg);}} 75% {{ transform: rotate(14deg);}} }}
+
+    /* ---- Panel dưới nhân vật ---- */
+    .status-row {{
+        display:flex; justify-content:center; gap:10px; margin: 6px 0 18px 0; flex-wrap: wrap;
+    }}
+    .status-chip {{
+        background: {panel_bg}; border:1px solid {bubble_border}; backdrop-filter: blur(10px);
+        padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight:600;
     }}
 
     .stButton>button {{
-        border-radius: 14px !important;
-        border: none !important;
+        border-radius: 14px !important; border:none !important;
         background: linear-gradient(135deg,#7F5AF0,#2CB67D) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        padding: 10px 22px !important;
-        transition: all .2s ease !important;
+        color:white !important; font-weight:700 !important;
         box-shadow: 0 4px 16px rgba(127,90,240,.35);
+        transition: all .2s ease !important;
     }}
-    .stButton>button:hover {{
-        transform: translateY(-2px) scale(1.02);
-        box-shadow: 0 8px 22px rgba(127,90,240,.5);
+    .stButton>button:hover {{ transform: translateY(-2px) scale(1.02); }}
+
+    .stTextInput>div>div>input {{
+        border-radius: 16px !important; padding: 12px 16px !important;
     }}
 
-    .word-card {{
-        background: {card_bg};
-        border-radius: 20px;
-        padding: 22px;
-        text-align: center;
-        border: 1px solid {border_color};
-        backdrop-filter: blur(14px);
-        transition: transform .3s ease;
-        animation: fadeIn .5s ease;
-    }}
-    .word-card:hover {{ transform: scale(1.03) rotate(-0.3deg); }}
-
-    .progress-ring-label {{
-        font-size: 13px;
-        opacity: .8;
-        text-align:center;
-    }}
-
-    ::-webkit-scrollbar {{ width: 8px; }}
-    ::-webkit-scrollbar-thumb {{ background: linear-gradient(135deg,#7F5AF0,#2CB67D); border-radius:10px; }}
-
-    .chat-bubble-user {{
-        background: linear-gradient(135deg,#7F5AF0,#5A3FC0);
-        color:white; padding:12px 18px; border-radius:18px 18px 4px 18px;
-        max-width:75%; margin-left:auto; margin-bottom:10px; animation: fadeIn .3s ease;
-    }}
-    .chat-bubble-ai {{
-        background: {card_bg}; border:1px solid {border_color};
-        padding:12px 18px; border-radius:18px 18px 18px 4px;
-        max-width:75%; margin-right:auto; margin-bottom:10px; animation: fadeIn .3s ease;
-        backdrop-filter: blur(10px);
-    }}
-
-    .menu-title {{
-        font-weight:700; font-size: 20px; margin-bottom: 4px;
-        background: linear-gradient(90deg,#7F5AF0,#2CB67D);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    @media (max-width: 640px) {{
+        .speech-bubble {{ max-width: 92%; font-size:15px; }}
     }}
     </style>
     """, unsafe_allow_html=True)
 
 
-# ==============================================================================
-# 7. CÁC THÀNH PHẦN GIAO DIỆN DÙNG CHUNG
-# ==============================================================================
-def glass_card_start():
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+def build_character_svg(animal="bear", mood="idle", speaking=False):
+    a = ANIMALS.get(animal, ANIMALS["bear"])
+    face, ear, muzzle = a["face"], a["ear"], a["muzzle"]
 
-def glass_card_end():
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Tai theo loại con vật
+    if animal == "rabbit":
+        ears = f"""
+        <ellipse cx="118" cy="55" rx="16" ry="55" fill="{ear}" transform="rotate(-12 118 55)"/>
+        <ellipse cx="182" cy="55" rx="16" ry="55" fill="{ear}" transform="rotate(12 182 55)"/>
+        """
+    elif animal == "cat" or animal == "fox":
+        ears = f"""
+        <polygon points="95,90 70,20 135,70" fill="{ear}"/>
+        <polygon points="205,90 230,20 165,70" fill="{ear}"/>
+        """
+    elif animal == "robot":
+        ears = f"""
+        <rect x="145" y="10" width="10" height="35" rx="4" fill="{ear}"/>
+        <circle cx="150" cy="10" r="9" fill="#FF6B6B"/>
+        <rect x="55" y="95" width="20" height="55" rx="8" fill="{ear}"/>
+        <rect x="225" y="95" width="20" height="55" rx="8" fill="{ear}"/>
+        """
+    else:  # bear / panda
+        ears = f"""
+        <circle cx="90" cy="65" r="34" fill="{ear}"/>
+        <circle cx="210" cy="65" r="34" fill="{ear}"/>
+        """
 
-def page_header(title, subtitle=""):
-    st.markdown(f'<div class="hero-title" style="font-size:32px;">{title}</div>', unsafe_allow_html=True)
-    if subtitle:
-        st.markdown(f'<div class="subtitle" style="font-size:15px;">{subtitle}</div>', unsafe_allow_html=True)
+    # Miệng theo tâm trạng
+    if mood == "sad":
+        mouth = '<path d="M130 210 Q150 195 170 210" stroke="#3A2E2E" stroke-width="5" fill="none" stroke-linecap="round"/>'
+    elif mood == "surprised":
+        mouth = '<ellipse cx="150" cy="208" rx="12" ry="15" fill="#3A2E2E"/>'
+    elif mood == "thinking":
+        mouth = '<path d="M132 208 Q150 208 168 202" stroke="#3A2E2E" stroke-width="5" fill="none" stroke-linecap="round"/>'
+    else:  # happy / idle / wave
+        mouth = '<path d="M125 198 Q150 225 175 198" stroke="#3A2E2E" stroke-width="6" fill="none" stroke-linecap="round"/>'
 
-def log_activity(activity):
-    st.session_state.history_log.append({
-        "date": str(datetime.date.today()),
-        "activity": activity,
-        "time": datetime.datetime.now().strftime("%H:%M"),
-    })
-    st.session_state.xp += random.randint(5, 15)
+    cheeks = ""
+    if mood in ("happy", "wave"):
+        cheeks = f"""
+        <ellipse cx="108" cy="185" rx="14" ry="9" fill="#FF9FB0" opacity="0.55"/>
+        <ellipse cx="192" cy="185" rx="14" ry="9" fill="#FF9FB0" opacity="0.55"/>
+        """
 
+    eyebrows = ""
+    if mood == "thinking":
+        eyebrows = '<path d="M110 130 Q120 122 132 128" stroke="#3A2E2E" stroke-width="4" fill="none" stroke-linecap="round"/>'
+    if mood == "sad":
+        eyebrows = ('<path d="M108 128 Q122 138 136 130" stroke="#3A2E2E" stroke-width="4" fill="none" stroke-linecap="round"/>'
+                    '<path d="M164 130 Q178 138 192 128" stroke="#3A2E2E" stroke-width="4" fill="none" stroke-linecap="round"/>')
 
-def lang_code_for_tts(lang_name):
-    mapping = {"Tiếng Anh": "en-US", "Tiếng Trung": "zh-CN", "Tiếng Việt": "vi-VN"}
-    return mapping.get(lang_name, "en-US")
+    hand_class = "char-hand-wave" if mood == "wave" else ""
+    mouth_class = "talking" if speaking else ""
 
-
-# ==============================================================================
-# 8. SIDEBAR
-# ==============================================================================
-def render_sidebar():
-    with st.sidebar:
-        st.markdown(f"""
-        <div style="text-align:center;padding:10px 0 20px 0;">
-            <div style="font-size:46px;">🌐</div>
-            <div class="menu-title">AI Language Learning</div>
-            <div style="opacity:.7;font-size:13px;">Nói chuyện với AI bằng bất kỳ ngôn ngữ nào</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown(f"""
-        <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px;
-        background:rgba(127,90,240,.15);margin-bottom:14px;">
-            <div style="font-size:28px;">{st.session_state.avatar}</div>
-            <div>
-                <div style="font-weight:600;">{st.session_state.username}</div>
-                <div style="font-size:12px;opacity:.75;">Lv.{st.session_state.level} • 🔥{st.session_state.streak} ngày • ⭐{st.session_state.xp} XP</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        menu_groups = {
-            "🏠 Chính": ["Trang chủ"],
-            "📘 Học tập": ["Học từ vựng", "Học ngữ pháp", "Luyện phát âm", "Luyện nghe",
-                          "Luyện nói", "Luyện đọc", "Luyện viết"],
-            "🤖 AI": ["Chat với AI"],
-            "🔤 Dịch": ["Dịch văn bản", "Dịch giọng nói", "Dịch camera"],
-            "🎮 Ôn luyện": ["Flashcard", "Mini Game", "Bài kiểm tra"],
-            "👤 Cá nhân": ["Thống kê", "Hồ sơ", "Cài đặt"],
-        }
-
-        for group, items in menu_groups.items():
-            st.markdown(f"<div style='opacity:.6;font-size:12px;margin:10px 0 4px 4px;'>{group}</div>", unsafe_allow_html=True)
-            for item in items:
-                active = st.session_state.page == item
-                if st.button(("➤ " if active else "") + item, key=f"nav_{item}", use_container_width=True):
-                    st.session_state.page = item
-                    st.rerun()
-
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🌙 Dark" if st.session_state.theme == "light" else "☀️ Light", use_container_width=True):
-                st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
-                st.rerun()
-        with col2:
-            st.markdown(f"<div style='text-align:center;padding-top:8px;'>{LANGUAGES[st.session_state.target_lang]['flag']} {st.session_state.target_lang}</div>", unsafe_allow_html=True)
+    svg = f"""
+    <svg viewBox="0 0 300 320" width="100%" height="100%" style="max-width:280px;">
+        <!-- Thân -->
+        <ellipse cx="150" cy="290" rx="80" ry="34" fill="{face}" opacity="0.9"/>
+        <!-- Tay -->
+        <ellipse class="{hand_class}" cx="55" cy="260" rx="20" ry="30" fill="{face}"/>
+        <ellipse cx="245" cy="260" rx="20" ry="30" fill="{face}"/>
+        <!-- Tai -->
+        {ears}
+        <!-- Đầu -->
+        <circle cx="150" cy="150" r="105" fill="{face}"/>
+        <!-- Mõm / mặt trong -->
+        <ellipse cx="150" cy="185" rx="62" ry="48" fill="{muzzle}"/>
+        {eyebrows}
+        <!-- Mắt -->
+        <g class="char-eye">
+            <ellipse cx="118" cy="150" rx="14" ry="17" fill="white"/>
+            <circle cx="120" cy="152" r="7" fill="#2B2B2B"/>
+        </g>
+        <g class="char-eye">
+            <ellipse cx="182" cy="150" rx="14" ry="17" fill="white"/>
+            <circle cx="184" cy="152" r="7" fill="#2B2B2B"/>
+        </g>
+        <!-- Má hồng -->
+        {cheeks}
+        <!-- Mũi -->
+        <ellipse cx="150" cy="178" rx="9" ry="6" fill="#3A2E2E"/>
+        <!-- Miệng -->
+        <g class="char-mouth {mouth_class}">{mouth}</g>
+    </svg>
+    """
+    return svg
 
 
-# ==============================================================================
-# 9. TRANG: TRANG CHỦ
-# ==============================================================================
-def page_home():
-    inject_css()
-    st.markdown('<div class="hero-title">AI Language Learning</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">🎓 Nói chuyện với AI bằng bất kỳ ngôn ngữ nào. Học Tiếng Việt, Tiếng Anh, Tiếng Trung — và sắp có thêm Nhật, Hàn, Pháp, Đức, Tây Ban Nha!</div>', unsafe_allow_html=True)
+def render_character():
+    svg = build_character_svg(st.session_state.character, st.session_state.mood, speaking=True)
+    st.markdown(f'<div class="character-wrap">{svg}</div>', unsafe_allow_html=True)
 
-    if not st.session_state.onboarded:
-        glass_card_start()
-        st.markdown("### 👋 Bắt đầu hành trình học ngôn ngữ của bạn")
-        c1, c2 = st.columns(2)
-        with c1:
-            native = st.selectbox("🗣️ Ngôn ngữ mẹ đẻ của bạn", list(LANGUAGES.keys()),
-                                   index=list(LANGUAGES.keys()).index(st.session_state.native_lang))
-        with c2:
-            learnable = [k for k in LANGUAGES if not LANGUAGES[k].get("soon")]
-            target = st.selectbox("🎯 Bạn muốn học ngôn ngữ nào?", learnable,
-                                   index=learnable.index(st.session_state.target_lang) if st.session_state.target_lang in learnable else 0)
-        st.caption("🔜 Sắp ra mắt: " + ", ".join([f"{LANGUAGES[k]['flag']} {k}" for k in LANGUAGES if LANGUAGES[k].get("soon")]))
-        if st.button("🚀 Bắt đầu học", use_container_width=True):
-            st.session_state.native_lang = native
-            st.session_state.target_lang = target
-            st.session_state.onboarded = True
-            log_activity("Onboarding hoàn tất")
-            st.rerun()
-        glass_card_end()
-    else:
-        c1, c2, c3, c4 = st.columns(4)
-        stats = [
-            ("🔥 Streak", f"{st.session_state.streak} ngày"),
-            ("⭐ XP", f"{st.session_state.xp}"),
-            ("📈 Level", f"{st.session_state.level}"),
-            ("📚 Từ đã học", f"{len(st.session_state.words_learned)}"),
-        ]
-        for col, (label, val) in zip([c1, c2, c3, c4], stats):
-            with col:
-                glass_card_start()
-                st.markdown(f"<div style='font-size:13px;opacity:.7'>{label}</div><div style='font-size:26px;font-weight:800;'>{val}</div>", unsafe_allow_html=True)
-                glass_card_end()
 
-        glass_card_start()
-        st.markdown(f"### 🎯 Đang học: {LANGUAGES[st.session_state.target_lang]['flag']} {st.session_state.target_lang}")
-        colA, colB = st.columns([3, 1])
-        with colA:
-            st.progress(min(st.session_state.xp % 100, 100) / 100, text=f"Tiến độ Level {st.session_state.level} → {st.session_state.level + 1}")
-        with colB:
-            new_target = st.selectbox("Đổi ngôn ngữ học", [k for k in LANGUAGES if not LANGUAGES[k].get("soon")],
-                                       index=[k for k in LANGUAGES if not LANGUAGES[k].get("soon")].index(st.session_state.target_lang),
-                                       label_visibility="collapsed")
-            if new_target != st.session_state.target_lang:
-                st.session_state.target_lang = new_target
-                st.rerun()
-        glass_card_end()
-
-        st.markdown("#### ⚡ Truy cập nhanh")
-        quick = [
-            ("💬", "Chat với AI", "Trò chuyện tự nhiên với AI"),
-            ("🃏", "Flashcard", "Ôn từ vựng bằng thẻ ghi nhớ"),
-            ("🎮", "Mini Game", "Học mà chơi, chơi mà học"),
-            ("🎙️", "Luyện nói", "Luyện phát âm & phản xạ nói"),
-        ]
-        cols = st.columns(4)
-        for col, (icon, name, desc) in zip(cols, quick):
-            with col:
-                glass_card_start()
-                st.markdown(f"<div style='font-size:34px;text-align:center;'>{icon}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='text-align:center;font-weight:700;'>{name}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='text-align:center;font-size:12px;opacity:.7;'>{desc}</div>", unsafe_allow_html=True)
-                if st.button("Vào ngay", key=f"quick_{name}", use_container_width=True):
-                    st.session_state.page = name
-                    st.rerun()
-                glass_card_end()
+def render_speech_bubble(text):
+    st.markdown(f'<div class="speech-bubble">{text}</div>', unsafe_allow_html=True)
 
 
 # ==============================================================================
-# 10. TRANG: HỌC TỪ VỰNG
+# 7. GIỌNG NÓI: TTS + MIC (Web Speech API nhúng JS trong Streamlit)
 # ==============================================================================
-def page_vocab():
-    inject_css()
-    page_header("📚 Học từ vựng", f"{LANGUAGES[st.session_state.target_lang]['flag']} {st.session_state.target_lang}")
-    vocab_list = VOCAB_DB.get(st.session_state.target_lang, [])
-    if not vocab_list:
-        st.info("Chưa có dữ liệu từ vựng cho ngôn ngữ này.")
-        return
-    cols = st.columns(2)
-    for i, v in enumerate(vocab_list):
-        with cols[i % 2]:
-            st.markdown(f"""
-            <div class="word-card">
-                <div style="font-size:44px;">{v['emoji']}</div>
-                <div style="font-size:24px;font-weight:800;">{v['word']}</div>
-                <div style="opacity:.7;font-size:13px;">{v['phonetic']}</div>
-                <div style="margin-top:8px;font-weight:600;">{v['meaning']}</div>
-                <div style="opacity:.75;font-size:13px;margin-top:6px;font-style:italic;">"{v['example']}"</div>
-            </div>
-            """, unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            with c1:
-                tts_html(v['word'], lang_code_for_tts(st.session_state.target_lang))
-            with c2:
-                if st.button("✅ Đã học", key=f"vocab_learned_{i}", use_container_width=True):
-                    st.session_state.words_learned.add(v['word'])
-                    log_activity(f"Học từ: {v['word']}")
-                    st.toast(f"Đã ghi nhớ '{v['word']}'! +XP")
-            st.write("")
+def speak_text(text, lang_code):
+    rate = st.session_state.voice_rate
+    gender = st.session_state.voice_gender
+    safe_text = json.dumps(text)
+    html = f"""
+    <script>
+    (function() {{
+        try {{
+            const synth = window.speechSynthesis;
+            const utter = new SpeechSynthesisUtterance({safe_text});
+            utter.lang = "{lang_code}";
+            utter.rate = {rate};
+            const voices = synth.getVoices();
+            let chosen = voices.find(v => v.lang === "{lang_code}" &&
+                (("{gender}" === "female" && /female|nữ|woman/i.test(v.name)) ||
+                 ("{gender}" === "male" && /male|nam|man/i.test(v.name))));
+            if (!chosen) {{ chosen = voices.find(v => v.lang === "{lang_code}"); }}
+            if (chosen) {{ utter.voice = chosen; }}
+            synth.cancel();
+            synth.speak(utter);
+        }} catch(e) {{}}
+    }})();
+    </script>
+    """
+    st.components.v1.html(html, height=0)
 
 
-# ==============================================================================
-# 11. TRANG: HỌC NGỮ PHÁP
-# ==============================================================================
-def page_grammar():
-    inject_css()
-    page_header("📐 Học ngữ pháp", f"{LANGUAGES[st.session_state.target_lang]['flag']} {st.session_state.target_lang}")
-    lessons = GRAMMAR_DB.get(st.session_state.target_lang, [])
-    if not lessons:
-        st.info("Chưa có bài học ngữ pháp cho ngôn ngữ này.")
-        return
-    for i, lesson in enumerate(lessons):
-        glass_card_start()
-        st.markdown(f"### 📖 {lesson['title']}")
-        st.write(lesson['explain'])
-        st.markdown(f"**Ví dụ:** _{lesson['example']}_")
-        with st.expander("📝 Làm quiz nhỏ để kiểm tra"):
-            choice = st.radio(lesson['quiz_q'], lesson['quiz_options'], key=f"gram_quiz_{i}", index=None)
-            if choice is not None:
-                correct = lesson['quiz_options'][lesson['quiz_answer']]
-                if choice == correct:
-                    st.success("🎉 Chính xác! Bạn giỏi quá!")
-                    log_activity(f"Ngữ pháp đúng: {lesson['title']}")
-                else:
-                    st.error(f"❌ Chưa đúng. Đáp án đúng là: **{correct}**")
-        glass_card_end()
-
-
-# ==============================================================================
-# 12. TRANG: LUYỆN PHÁT ÂM
-# ==============================================================================
-def page_pronunciation():
-    inject_css()
-    page_header("🗣️ Luyện phát âm", "AI sẽ chấm điểm độ chuẩn phát âm của bạn")
-    vocab_list = VOCAB_DB.get(st.session_state.target_lang, [])
-    if not vocab_list:
-        st.info("Chưa có dữ liệu cho ngôn ngữ này.")
-        return
-    word = random.choice(vocab_list) if "pron_word" not in st.session_state else st.session_state.pron_word
-    if st.button("🔄 Từ mới"):
-        st.session_state.pron_word = random.choice(vocab_list)
-        st.session_state.pron_last_score = None
-        st.rerun()
-    st.session_state.pron_word = word
-
-    glass_card_start()
-    st.markdown(f"<div style='text-align:center;font-size:40px;font-weight:800;'>{word['word']}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='text-align:center;opacity:.7;'>{word['phonetic']}</div>", unsafe_allow_html=True)
-    tts_html(word['word'], lang_code_for_tts(st.session_state.target_lang))
-    st.write("")
-    st.markdown("**🎤 Bấm micro và đọc từ trên:**")
-    mic_input_html(lang_code_for_tts(st.session_state.target_lang), key="pron_mic")
-    if st.button("📊 Chấm điểm phát âm (AI)", use_container_width=True):
-        score, good, bad = pronunciation_score_fake(word['word'])
-        st.session_state.pron_last_score = (score, good, bad)
-        log_activity("Luyện phát âm")
-    if st.session_state.pron_last_score:
-        score, good, bad = st.session_state.pron_last_score
-        st.markdown(f"### 🏆 Điểm phát âm: {score}/100")
-        st.progress(score / 100)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.success("✅ Âm phát chuẩn: " + ", ".join(good))
-        with c2:
-            st.warning("⚠️ Âm cần cải thiện: " + ", ".join(bad))
-        st.info("💡 Gợi ý: Luyện tập chậm rãi, chú ý khẩu hình miệng và nghe lại mẫu nhiều lần.")
-    glass_card_end()
-
-
-# ==============================================================================
-# 13. TRANG: LUYỆN NGHE
-# ==============================================================================
-def page_listening():
-    inject_css()
-    page_header("🎧 Luyện nghe", "Nghe AI đọc và gõ lại câu bạn nghe được")
-    sentences = LISTENING_DB.get(st.session_state.target_lang, [])
-    if not sentences:
-        st.info("Chưa có dữ liệu cho ngôn ngữ này.")
-        return
-    if "listen_sentence" not in st.session_state:
-        st.session_state.listen_sentence = random.choice(sentences)
-
-    glass_card_start()
-    st.markdown("### 🔊 Bấm nghe và gõ lại câu bạn nghe được")
-    tts_html(st.session_state.listen_sentence, lang_code_for_tts(st.session_state.target_lang), rate=0.9)
-    answer = st.text_input("✍️ Nhập lại câu bạn nghe được:")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("✅ Kiểm tra", use_container_width=True):
-            correct = st.session_state.listen_sentence.strip().lower()
-            given = answer.strip().lower()
-            if given == correct:
-                st.success("🎉 Chính xác 100%!")
-                log_activity("Luyện nghe đúng")
-            else:
-                ratio = sum(1 for a, b in zip(given, correct) if a == b) / max(len(correct), 1)
-                st.warning(f"Gần đúng ({int(ratio*100)}% khớp). Đáp án: **{st.session_state.listen_sentence}**")
-    with c2:
-        if st.button("⏭️ Câu tiếp theo", use_container_width=True):
-            st.session_state.listen_sentence = random.choice(sentences)
-            st.rerun()
-    glass_card_end()
-
-
-# ==============================================================================
-# 14. TRANG: LUYỆN NÓI
-# ==============================================================================
-def page_speaking():
-    inject_css()
-    page_header("🎙️ Luyện nói", "AI đặt câu hỏi, bạn trả lời bằng giọng nói")
-    questions = SPEAKING_QUESTIONS.get(st.session_state.target_lang, [])
-    if not questions:
-        st.info("Chưa có dữ liệu cho ngôn ngữ này.")
-        return
-    if "speak_q" not in st.session_state:
-        st.session_state.speak_q = random.choice(questions)
-
-    glass_card_start()
-    st.markdown(f"### 🤖 AI hỏi:")
-    st.markdown(f"#### “{st.session_state.speak_q}”")
-    tts_html(st.session_state.speak_q, lang_code_for_tts(st.session_state.target_lang))
-    st.write("")
-    st.markdown("**🎤 Trả lời bằng giọng nói của bạn:**")
-    mic_input_html(lang_code_for_tts(st.session_state.target_lang), key="speak_mic")
-    st.write("")
-    manual = st.text_area("Hoặc gõ câu trả lời của bạn (nếu không dùng micro):")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("📊 AI đánh giá câu trả lời", use_container_width=True):
-            score, good, bad = pronunciation_score_fake(manual)
-            st.success(f"🏆 Điểm phản xạ & phát âm: {score}/100")
-            st.info("💡 Nhận xét AI: Câu trả lời khá tự nhiên! Hãy thử nói dài hơn và dùng thêm liên từ để câu mượt hơn.")
-            log_activity("Luyện nói")
-    with c2:
-        if st.button("⏭️ Câu hỏi khác", use_container_width=True):
-            st.session_state.speak_q = random.choice(questions)
-            st.rerun()
-    glass_card_end()
-
-
-# ==============================================================================
-# 15. TRANG: LUYỆN VIẾT
-# ==============================================================================
-def page_writing():
-    inject_css()
-    page_header("✍️ Luyện viết", "AI chấm chữa ngữ pháp, chính tả, từ vựng & độ tự nhiên")
-    topics = WRITING_TOPICS.get(st.session_state.target_lang, [])
-    if "write_topic" not in st.session_state:
-        st.session_state.write_topic = random.choice(topics) if topics else "Hãy viết một đoạn văn ngắn."
-
-    glass_card_start()
-    st.markdown(f"### 📝 Chủ đề: {st.session_state.write_topic}")
-    if st.button("🔄 Đổi chủ đề"):
-        st.session_state.write_topic = random.choice(topics)
-        st.rerun()
-    text = st.text_area("Viết bài của bạn tại đây:", height=180)
-    if st.button("🔍 AI chấm bài", use_container_width=True):
-        if text.strip():
-            word_count = len(text.split())
-            score = min(95, 60 + word_count)
-            st.markdown(f"### 🏆 Điểm tổng quát: {score}/100")
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**✅ Ưu điểm:**")
-                st.write("- Ý tưởng rõ ràng, đúng chủ đề\n- Câu văn có cấu trúc hợp lý")
-            with c2:
-                st.markdown("**⚠️ Cần cải thiện:**")
-                st.write("- Kiểm tra lại thì động từ\n- Dùng thêm từ nối để bài viết mượt hơn\n- Đa dạng hóa từ vựng")
-            log_activity("Luyện viết")
-        else:
-            st.warning("Hãy nhập nội dung trước khi chấm bài.")
-    glass_card_end()
-
-
-# ==============================================================================
-# 16. TRANG: LUYỆN ĐỌC
-# ==============================================================================
-def page_reading():
-    inject_css()
-    page_header("📖 Luyện đọc", "Đọc và nghe AI đọc mẫu")
-    passages = READING_DB.get(st.session_state.target_lang, [])
-    if not passages:
-        st.info("Chưa có dữ liệu cho ngôn ngữ này.")
-        return
-    for p in passages:
-        glass_card_start()
-        st.markdown(f"### {p['title']}")
-        st.write(p['text'])
-        tts_html(p['text'], lang_code_for_tts(st.session_state.target_lang))
-        glass_card_end()
-
-
-# ==============================================================================
-# 17. TRANG: CHAT VỚI AI
-# ==============================================================================
-def page_chat():
-    inject_css()
-    page_header("💬 Chat với AI", f"Trò chuyện tự nhiên bằng {LANGUAGES[st.session_state.target_lang]['flag']} {st.session_state.target_lang}")
-
-    lang = st.session_state.target_lang
-    if lang not in st.session_state.chat_history:
-        st.session_state.chat_history[lang] = []
-    history = st.session_state.chat_history[lang]
-
-    if not st.session_state.openai_api_key:
-        st.info("ℹ️ Đang dùng **Chatbot giả lập** (demo, không cần API). Vào **Cài đặt** để thêm OpenAI API Key và kích hoạt AI thật.")
-
-    glass_card_start()
-    chat_box = st.container(height=420)
-    with chat_box:
-        if not history:
-            st.markdown('<div class="chat-bubble-ai">👋 Xin chào! Hãy bắt đầu trò chuyện với tôi nhé!</div>', unsafe_allow_html=True)
-        for h in history:
-            css_class = "chat-bubble-user" if h["role"] == "user" else "chat-bubble-ai"
-            st.markdown(f'<div class="{css_class}">{h["content"]}</div>', unsafe_allow_html=True)
-
-    col1, col2, col3 = st.columns([5, 1, 1])
-    with col1:
-        user_msg = st.text_input("Nhập tin nhắn...", key="chat_input", label_visibility="collapsed")
-    with col2:
-        send = st.button("📤 Gửi", use_container_width=True)
-    with col3:
-        clear = st.button("🗑️ Xoá", use_container_width=True)
-
-    st.markdown("**🎤 Hoặc nói chuyện bằng giọng nói:**")
-    mic_input_html(lang_code_for_tts(lang), key="chat_mic")
-
-    if clear:
-        st.session_state.chat_history[lang] = []
-        st.rerun()
-
-    if send and user_msg.strip():
-        history.append({"role": "user", "content": user_msg})
-        with st.spinner("🤖 AI đang trả lời..."):
-            reply = get_ai_response(user_msg, lang, history)
-            time.sleep(0.3)
-        history.append({"role": "ai", "content": reply})
-        log_activity("Chat với AI")
-        st.rerun()
-
-    glass_card_end()
-
-
-# ==============================================================================
-# 18. TRANG: DỊCH (VĂN BẢN / GIỌNG NÓI / CAMERA)
-# ==============================================================================
-def translate_ui(mode):
-    inject_css()
-    titles = {
-        "text": ("📝 Dịch văn bản", "Nhập văn bản để dịch ngay lập tức"),
-        "voice": ("🎙️ Dịch giọng nói", "Nói để AI dịch trực tiếp"),
-        "camera": ("📷 Dịch camera", "Chụp ảnh văn bản để dịch (OCR)"),
-    }
-    title, sub = titles[mode]
-    page_header(title, sub)
-
-    all_langs = [k for k in LANGUAGES if not LANGUAGES[k].get("soon")]
-    c1, c2, c3 = st.columns([2, 1, 2])
-    with c1:
-        src = st.selectbox("Từ ngôn ngữ", all_langs, index=all_langs.index(st.session_state.native_lang) if st.session_state.native_lang in all_langs else 0, key=f"src_{mode}")
-    with c2:
-        st.markdown("<div style='text-align:center;font-size:26px;padding-top:28px;'>⇄</div>", unsafe_allow_html=True)
-    with c3:
-        dst = st.selectbox("Sang ngôn ngữ", all_langs, index=all_langs.index(st.session_state.target_lang) if st.session_state.target_lang in all_langs else 1, key=f"dst_{mode}")
-
-    glass_card_start()
-    if mode == "text":
-        text = st.text_area("Nhập văn bản cần dịch:", height=120)
-        if st.button("🔁 Dịch ngay", use_container_width=True):
-            if text.strip():
-                result = fake_translate(text, src, dst)
-                st.markdown(f"### ✅ Kết quả:")
-                st.success(result)
-                tts_html(result, lang_code_for_tts(dst))
-                log_activity("Dịch văn bản")
-    elif mode == "voice":
-        st.markdown("**🎤 Bấm micro và nói câu cần dịch:**")
-        mic_input_html(lang_code_for_tts(src), key="translate_mic")
-        manual = st.text_input("Hoặc gõ tay nội dung vừa nói (demo):")
-        if st.button("🔁 Dịch giọng nói", use_container_width=True):
-            if manual.strip():
-                result = fake_translate(manual, src, dst)
-                st.success(result)
-                tts_html(result, lang_code_for_tts(dst))
-                log_activity("Dịch giọng nói")
-    else:  # camera
-        img = st.camera_input("📷 Chụp ảnh có chứa văn bản cần dịch")
-        if img is not None:
-            st.image(img, caption="Ảnh đã chụp", width=300)
-            st.info("🔍 (Demo) Đây là nơi hệ thống OCR sẽ trích xuất văn bản từ ảnh rồi dịch tự động. "
-                    "Khi kết nối API OCR/Vision thật, kết quả nhận diện sẽ hiển thị ở đây.")
-            fake_ocr_text = "hello"
-            result = fake_translate(fake_ocr_text, "Tiếng Anh", dst)
-            st.success(f"Văn bản demo nhận diện: **{fake_ocr_text}** ➜ {result}")
-            log_activity("Dịch camera")
-    glass_card_end()
-
-
-# ==============================================================================
-# 19. TRANG: FLASHCARD
-# ==============================================================================
-def page_flashcard():
-    inject_css()
-    page_header("🃏 Flashcard", "Vuốt để ghi nhớ từ vựng nhanh hơn")
-    vocab_list = VOCAB_DB.get(st.session_state.target_lang, [])
-    if not vocab_list:
-        st.info("Chưa có dữ liệu cho ngôn ngữ này.")
-        return
-
-    idx = st.session_state.flashcard_index % len(vocab_list)
-    card = vocab_list[idx]
-
-    show_answer = st.toggle("👁️ Hiện nghĩa", key="flash_toggle")
-
-    glass_card_start()
-    st.markdown(f"""
-    <div style="text-align:center;padding:40px 0;">
-        <div style="font-size:60px;">{card['emoji']}</div>
-        <div style="font-size:38px;font-weight:800;">{card['word']}</div>
-        <div style="opacity:.7;">{card['phonetic']}</div>
-        {"<div style='margin-top:16px;font-size:20px;font-weight:600;color:#2CB67D;'>" + card['meaning'] + "</div><div style='opacity:.75;font-style:italic;margin-top:6px;'>" + card['example'] + "</div>" if show_answer else ""}
+def mic_button(lang_code, key="mic"):
+    """Nút micro dùng Web Speech API. Kết quả nhận diện hiển thị ngay trong khung,
+    đồng thời cố gắng tự điền vào ô nhập liệu chính của Streamlit (best-effort)."""
+    html = f"""
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+      <button onclick='
+        try {{
+          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          const rec = new SR();
+          rec.lang = "{lang_code}";
+          rec.interimResults = false;
+          document.getElementById("micres_{key}").innerText = "🎙️ Đang nghe...";
+          rec.onresult = function(e) {{
+            const text = e.results[0][0].transcript;
+            document.getElementById("micres_{key}").innerText = "📝 " + text;
+            // best-effort: tự điền vào ô input chính của Streamlit
+            try {{
+              const inputs = window.parent.document.querySelectorAll("input[type=text]");
+              if (inputs.length > 0) {{
+                const target = inputs[inputs.length - 1];
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.parent.HTMLInputElement.prototype, "value").set;
+                nativeSetter.call(target, text);
+                target.dispatchEvent(new Event("input", {{ bubbles: true }}));
+              }}
+            }} catch(err) {{}}
+          }};
+          rec.onerror = function() {{
+            document.getElementById("micres_{key}").innerText = "⚠️ Không nghe rõ, thử lại nhé (cần Chrome + micro).";
+          }};
+          rec.start();
+        }} catch(err) {{
+          document.getElementById("micres_{key}").innerText = "⚠️ Trình duyệt không hỗ trợ nhận diện giọng nói.";
+        }}
+      ' style="
+        background: linear-gradient(135deg,#FF8FAB,#7F5AF0);
+        border:none; color:white; width:64px; height:64px; border-radius:50%;
+        font-size:26px; cursor:pointer; box-shadow:0 6px 20px rgba(127,90,240,.45);
+      ">🎤</button>
+      <div id="micres_{key}" style="font-size:12px; opacity:.75; font-style:italic; text-align:center;">
+        Bấm để nói (kết quả sẽ tự điền vào ô nhập bên dưới)
+      </div>
     </div>
-    """, unsafe_allow_html=True)
-    tts_html(card['word'], lang_code_for_tts(st.session_state.target_lang))
-    glass_card_end()
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("❌ Chưa nhớ", use_container_width=True):
-            st.session_state.flashcard_unknown.add(card['word'])
-            st.session_state.flashcard_index += 1
-            st.rerun()
-    with c2:
-        if st.button("⏭️ Bỏ qua", use_container_width=True):
-            st.session_state.flashcard_index += 1
-            st.rerun()
-    with c3:
-        if st.button("✅ Đã nhớ", use_container_width=True):
-            st.session_state.flashcard_known.add(card['word'])
-            st.session_state.words_learned.add(card['word'])
-            st.session_state.flashcard_index += 1
-            log_activity("Flashcard: đã nhớ")
-            st.rerun()
-
-    st.progress(len(st.session_state.flashcard_known) / max(len(vocab_list), 1),
-                text=f"Đã nhớ {len(st.session_state.flashcard_known)}/{len(vocab_list)} từ")
+    """
+    st.components.v1.html(html, height=100)
 
 
 # ==============================================================================
-# 20. TRANG: MINI GAME
+# 8. XỬ LÝ GỬI TIN NHẮN
 # ==============================================================================
-def page_game():
-    inject_css()
-    page_header("🎮 Mini Game", "Học mà chơi - chơi mà học")
-    vocab_list = VOCAB_DB.get(st.session_state.target_lang, [])
-    if not vocab_list:
-        st.info("Chưa có dữ liệu cho ngôn ngữ này.")
+def handle_send(user_text):
+    if not user_text or not user_text.strip():
         return
-
-    game_type = st.radio("Chọn trò chơi:", ["🔗 Nối từ", "🎯 Chọn đáp án đúng", "✍️ Điền từ còn thiếu"], horizontal=True)
-
-    if game_type == "🎯 Chọn đáp án đúng":
-        if "game_q" not in st.session_state:
-            st.session_state.game_q = random.choice(vocab_list)
-            wrong = random.sample([v for v in vocab_list if v != st.session_state.game_q], k=min(3, len(vocab_list)-1))
-            opts = [st.session_state.game_q['meaning']] + [w['meaning'] for w in wrong]
-            random.shuffle(opts)
-            st.session_state.game_opts = opts
-
-        glass_card_start()
-        q = st.session_state.game_q
-        st.markdown(f"### Từ **{q['word']}** có nghĩa là gì?")
-        choice = st.radio("Chọn đáp án:", st.session_state.game_opts, key="game_choice", index=None)
-        if choice is not None:
-            if choice == q['meaning']:
-                st.success(f"🎉 Chính xác! +10 điểm")
-                st.session_state.game_score += 10
-                log_activity("Mini game đúng")
-            else:
-                st.error(f"❌ Sai rồi! Đáp án đúng: {q['meaning']}")
-            if st.button("➡️ Câu tiếp theo"):
-                del st.session_state.game_q
-                del st.session_state.game_opts
-                st.rerun()
-        glass_card_end()
-
-    elif game_type == "🔗 Nối từ":
-        glass_card_start()
-        st.write("Ghép từ vựng với đúng nghĩa của nó:")
-        sample = random.sample(vocab_list, k=min(4, len(vocab_list)))
-        words = [s['word'] for s in sample]
-        meanings = [s['meaning'] for s in sample]
-        shuffled_meanings = meanings.copy()
-        random.shuffle(shuffled_meanings)
-        answers = {}
-        for w in words:
-            answers[w] = st.selectbox(f"**{w}** ⇄", ["-- chọn nghĩa --"] + shuffled_meanings, key=f"match_{w}")
-        if st.button("✅ Kiểm tra kết quả"):
-            correct_count = sum(1 for s in sample if answers[s['word']] == s['meaning'])
-            st.session_state.game_score += correct_count * 5
-            st.success(f"🏆 Bạn nối đúng {correct_count}/{len(sample)} từ! (+{correct_count*5} điểm)")
-            log_activity("Mini game nối từ")
-        glass_card_end()
-
-    else:  # điền từ
-        glass_card_start()
-        target = random.choice(vocab_list) if "fill_word" not in st.session_state else st.session_state.fill_word
-        st.session_state.fill_word = target
-        blanked = target['example'].replace(target['word'], "_____", 1) if target['word'] in target['example'] else target['example']
-        st.markdown(f"### Điền từ còn thiếu vào câu:")
-        st.markdown(f"_{blanked}_")
-        ans = st.text_input("Nhập từ còn thiếu:")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("✅ Kiểm tra"):
-                if ans.strip().lower() == target['word'].lower():
-                    st.success("🎉 Chính xác! +10 điểm")
-                    st.session_state.game_score += 10
-                    log_activity("Mini game điền từ")
-                else:
-                    st.error(f"❌ Sai rồi! Đáp án: {target['word']}")
-        with c2:
-            if st.button("⏭️ Câu khác"):
-                st.session_state.fill_word = random.choice(vocab_list)
-                st.rerun()
-        glass_card_end()
-
-    st.markdown(f"### 🏅 Điểm hiện tại: {st.session_state.game_score}")
+    st.session_state.chat_log.append({"role": "user", "text": user_text, "ts": datetime.datetime.now().isoformat()})
+    reply = get_ai_reply(user_text)
+    st.session_state.chat_log.append({"role": "ai", "text": reply, "ts": datetime.datetime.now().isoformat()})
+    st.session_state.chat_log = st.session_state.chat_log[-60:]  # giới hạn log
+    st.session_state.total_study_minutes += 0.5  # ước lượng thời gian học mỗi lượt trao đổi
+    st.session_state.speaking_id += 1
+    save_data()
 
 
 # ==============================================================================
-# 21. TRANG: BÀI KIỂM TRA
+# 9. GIAO DIỆN CHÍNH
 # ==============================================================================
-def page_quiz():
-    inject_css()
-    page_header("📝 Bài kiểm tra", "Kiểm tra tổng hợp từ vựng & ngữ pháp")
-    vocab_list = VOCAB_DB.get(st.session_state.target_lang, [])
-    grammar_list = GRAMMAR_DB.get(st.session_state.target_lang, [])
-
-    if "quiz_questions" not in st.session_state:
-        questions = []
-        for v in random.sample(vocab_list, k=min(4, len(vocab_list))):
-            wrong = random.sample([x for x in vocab_list if x != v], k=min(3, len(vocab_list)-1))
-            opts = [v['meaning']] + [w['meaning'] for w in wrong]
-            random.shuffle(opts)
-            questions.append({"q": f"'{v['word']}' nghĩa là gì?", "opts": opts, "ans": v['meaning']})
-        for g in grammar_list:
-            questions.append({"q": g['quiz_q'], "opts": g['quiz_options'], "ans": g['quiz_options'][g['quiz_answer']]})
-        random.shuffle(questions)
-        st.session_state.quiz_questions = questions
-        st.session_state.quiz_answers = {}
-
-    glass_card_start()
-    for i, q in enumerate(st.session_state.quiz_questions):
-        st.markdown(f"**Câu {i+1}:** {q['q']}")
-        ans = st.radio("Chọn đáp án:", q['opts'], key=f"quiz_{i}", index=None, label_visibility="collapsed")
-        st.session_state.quiz_answers[i] = ans
-        st.write("---")
-
-    if st.button("📤 Nộp bài", use_container_width=True):
-        correct = sum(1 for i, q in enumerate(st.session_state.quiz_questions)
-                      if st.session_state.quiz_answers.get(i) == q['ans'])
-        total = len(st.session_state.quiz_questions)
-        score = int(correct / total * 100) if total else 0
-        st.session_state.quiz_score = correct
-        st.session_state.quiz_total = total
-        st.markdown(f"## 🏆 Kết quả: {correct}/{total} câu đúng ({score}/100 điểm)")
-        st.balloons() if score >= 70 else None
-        st.progress(score / 100)
-        log_activity("Hoàn thành bài kiểm tra")
-        st.session_state.xp += score
-
-    if st.button("🔄 Làm bài mới"):
-        del st.session_state.quiz_questions
-        del st.session_state.quiz_answers
-        st.rerun()
-    glass_card_end()
-
-
-# ==============================================================================
-# 22. TRANG: THỐNG KÊ
-# ==============================================================================
-def page_stats():
-    inject_css()
-    page_header("📊 Thống kê học tập", "Theo dõi tiến độ của bạn")
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    stat_items = [
-        ("📅 Ngày học", str(len(set(h['date'] for h in st.session_state.history_log)) or 1)),
-        ("🔥 Streak", f"{st.session_state.streak}"),
-        ("⭐ Điểm XP", f"{st.session_state.xp}"),
-        ("📈 Level", f"{st.session_state.level}"),
-        ("📚 Từ đã học", f"{len(st.session_state.words_learned)}"),
-    ]
-    for col, (label, val) in zip([c1, c2, c3, c4, c5], stat_items):
-        with col:
-            glass_card_start()
-            st.markdown(f"<div style='font-size:12px;opacity:.7'>{label}</div><div style='font-size:24px;font-weight:800;'>{val}</div>", unsafe_allow_html=True)
-            glass_card_end()
-
-    glass_card_start()
-    st.markdown("### 📈 Biểu đồ tiến bộ (XP theo hoạt động)")
-    if st.session_state.history_log:
-        xp_progress = list(range(5, 5 * (len(st.session_state.history_log) + 1), 5))
-        st.line_chart(xp_progress)
-    else:
-        st.info("Chưa có dữ liệu. Hãy bắt đầu học để xem biểu đồ tiến bộ!")
-    glass_card_end()
-
-    c1, c2 = st.columns(2)
+def render_top_bar():
+    c1, c2, c3 = st.columns([1, 4, 1])
     with c1:
-        glass_card_start()
-        st.markdown("### 🟢 Progress Ring - Mục tiêu hôm nay")
-        today_count = sum(1 for h in st.session_state.history_log if h['date'] == str(datetime.date.today()))
-        goal = 5
-        pct = min(today_count / goal, 1.0)
-        st.progress(pct, text=f"{today_count}/{goal} hoạt động hôm nay")
-        glass_card_end()
-    with c2:
-        glass_card_start()
-        st.markdown("### 🗂️ Nhật ký học tập gần đây")
-        if st.session_state.history_log:
-            for h in reversed(st.session_state.history_log[-8:]):
-                st.markdown(f"- `{h['time']}` {h['activity']}")
-        else:
-            st.write("Chưa có hoạt động nào.")
-        glass_card_end()
-
-
-# ==============================================================================
-# 23. TRANG: HỒ SƠ
-# ==============================================================================
-def page_profile():
-    inject_css()
-    page_header("👤 Hồ sơ cá nhân", "Thông tin học viên")
-    glass_card_start()
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        avatar = st.selectbox("Avatar", ["🧑‍🎓", "👩‍🎓", "🧑‍💻", "👨‍🏫", "🐱", "🐶", "🦊", "🐼"],
-                               index=["🧑‍🎓", "👩‍🎓", "🧑‍💻", "👨‍🏫", "🐱", "🐶", "🦊", "🐼"].index(st.session_state.avatar) if st.session_state.avatar in ["🧑‍🎓", "👩‍🎓", "🧑‍💻", "👨‍🏫", "🐱", "🐶", "🦊", "🐼"] else 0)
-        st.markdown(f"<div style='font-size:80px;text-align:center;'>{avatar}</div>", unsafe_allow_html=True)
-    with c2:
-        name = st.text_input("Tên hiển thị", value=st.session_state.username)
-        st.write(f"**Ngôn ngữ mẹ đẻ:** {st.session_state.native_lang}")
-        st.write(f"**Đang học:** {LANGUAGES[st.session_state.target_lang]['flag']} {st.session_state.target_lang}")
-        st.write(f"**Level:** {st.session_state.level}  |  **XP:** {st.session_state.xp}  |  **Streak:** {st.session_state.streak} 🔥")
-        if st.button("💾 Lưu hồ sơ"):
-            st.session_state.username = name
-            st.session_state.avatar = avatar
-            st.success("Đã lưu hồ sơ!")
-    glass_card_end()
-
-    glass_card_start()
-    st.markdown("### 🏆 Huy hiệu thành tích")
-    badges = [
-        ("🥇", "Người mới", True),
-        ("🔥", "Streak 3 ngày", st.session_state.streak >= 3),
-        ("📚", "Học 5+ từ", len(st.session_state.words_learned) >= 5),
-        ("💬", "Chat 1 lần với AI", len(st.session_state.chat_history.get(st.session_state.target_lang, [])) > 0),
-        ("🎮", "Chơi Mini Game", st.session_state.game_score > 0),
-    ]
-    cols = st.columns(len(badges))
-    for col, (icon, name_b, earned) in zip(cols, badges):
-        with col:
-            opacity = "1" if earned else "0.25"
-            st.markdown(f"<div style='text-align:center;opacity:{opacity};'><div style='font-size:36px;'>{icon}</div><div style='font-size:11px;'>{name_b}</div></div>", unsafe_allow_html=True)
-    glass_card_end()
-
-
-# ==============================================================================
-# 24. TRANG: CÀI ĐẶT
-# ==============================================================================
-def page_settings():
-    inject_css()
-    page_header("⚙️ Cài đặt", "Tuỳ chỉnh trải nghiệm học tập của bạn")
-
-    glass_card_start()
-    st.markdown("### 🎨 Giao diện")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        theme = st.selectbox("Theme", ["dark", "light"], index=0 if st.session_state.theme == "dark" else 1,
-                              format_func=lambda x: "🌙 Dark Mode" if x == "dark" else "☀️ Light Mode")
-        st.session_state.theme = theme
-    with c2:
-        font_size = st.selectbox("Cỡ chữ", ["Nhỏ", "Vừa", "Lớn"], index=["Nhỏ", "Vừa", "Lớn"].index(st.session_state.font_size))
-        st.session_state.font_size = font_size
+        if st.button("⚙️", help="Cài đặt"):
+            st.session_state.show_settings = not st.session_state.get("show_settings", False)
     with c3:
-        st.selectbox("Font chữ", ["Poppins (mặc định)", "Sans-serif", "Serif"], index=0, disabled=True)
-    glass_card_end()
+        if st.button("🌙" if st.session_state.theme == "light" else "☀️", help="Đổi giao diện sáng/tối"):
+            st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+            save_data()
+            st.rerun()
 
-    glass_card_start()
-    st.markdown("### 🌍 Ngôn ngữ")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.session_state.native_lang = st.selectbox("Ngôn ngữ mẹ đẻ", list(LANGUAGES.keys()),
-                                                      index=list(LANGUAGES.keys()).index(st.session_state.native_lang))
-    with c2:
-        learnable = [k for k in LANGUAGES if not LANGUAGES[k].get("soon")]
-        st.session_state.target_lang = st.selectbox("Ngôn ngữ đang học", learnable,
-                                                      index=learnable.index(st.session_state.target_lang))
-    glass_card_end()
+    if st.session_state.get("show_settings", False):
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Cài đặt")
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                animal = st.selectbox("Nhân vật", list(ANIMALS.keys()), format_func=lambda k: ANIMALS[k]["name"],
+                                       index=list(ANIMALS.keys()).index(st.session_state.character))
+                if animal != st.session_state.character:
+                    st.session_state.character = animal
+                    save_data()
+                    st.rerun()
+                gender = st.selectbox("Giọng nói", ["female", "male"], format_func=lambda x: "Giọng nữ" if x == "female" else "Giọng nam",
+                                       index=0 if st.session_state.voice_gender == "female" else 1)
+                st.session_state.voice_gender = gender
+            with cc2:
+                rate = st.slider("Tốc độ nói", 0.5, 1.5, float(st.session_state.voice_rate), 0.1)
+                st.session_state.voice_rate = rate
+                key_in = st.text_input("OpenAI API Key (tuỳ chọn)", value=st.session_state.openai_api_key, type="password")
+                st.session_state.openai_api_key = key_in
 
-    glass_card_start()
-    st.markdown("### 🔊 Giọng nói AI")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.session_state.ai_voice = st.selectbox("Giọng đọc", ["Nữ (US)", "Nam (US)", "Nữ (UK)", "Nam (UK)"],
-                                                   index=["Nữ (US)", "Nam (US)", "Nữ (UK)", "Nam (UK)"].index(st.session_state.ai_voice))
-    with c2:
-        st.session_state.speech_speed = st.slider("Tốc độ nói", 0.5, 1.5, st.session_state.speech_speed, 0.1)
-    glass_card_end()
+            if st.button("💾 Lưu cài đặt"):
+                save_data()
+                st.success("Đã lưu!")
 
-    glass_card_start()
-    st.markdown("### 🤖 Cấu hình AI (OpenAI API)")
-    st.caption("Nhập OpenAI API Key để kích hoạt AI thật (chat, dịch, chấm bài nâng cao). "
-               "Nếu để trống, hệ thống dùng Chatbot giả lập để bạn vẫn trải nghiệm được đầy đủ tính năng.")
-    key_input = st.text_input("OpenAI API Key", value=st.session_state.openai_api_key, type="password",
-                               placeholder="sk-...")
-    if st.button("💾 Lưu API Key"):
-        st.session_state.openai_api_key = key_input
-        st.success("✅ Đã lưu! AI thật sẽ được sử dụng ở các trang Chat/Dịch/Chấm bài." if key_input else "Đã xoá key, dùng chế độ giả lập.")
-    glass_card_end()
-
-
-# ==============================================================================
-# 25. ROUTER - ĐIỀU HƯỚNG TRANG
-# ==============================================================================
-def router():
-    render_sidebar()
-    page = st.session_state.page
-    page_map = {
-        "Trang chủ": page_home,
-        "Học từ vựng": page_vocab,
-        "Học ngữ pháp": page_grammar,
-        "Luyện phát âm": page_pronunciation,
-        "Luyện nghe": page_listening,
-        "Luyện nói": page_speaking,
-        "Luyện đọc": page_reading,
-        "Luyện viết": page_writing,
-        "Chat với AI": page_chat,
-        "Dịch văn bản": lambda: translate_ui("text"),
-        "Dịch giọng nói": lambda: translate_ui("voice"),
-        "Dịch camera": lambda: translate_ui("camera"),
-        "Flashcard": page_flashcard,
-        "Mini Game": page_game,
-        "Bài kiểm tra": page_quiz,
-        "Thống kê": page_stats,
-        "Hồ sơ": page_profile,
-        "Cài đặt": page_settings,
-    }
-    func = page_map.get(page, page_home)
-    func()
+            st.markdown("---")
+            if st.button("🗑️ Đặt lại toàn bộ tiến trình học"):
+                st.session_state.confirm_reset = True
+            if st.session_state.get("confirm_reset"):
+                st.warning("Bạn chắc chắn muốn xoá toàn bộ tiến trình học chứ? Hành động này không thể hoàn tác.")
+                rc1, rc2 = st.columns(2)
+                with rc1:
+                    if st.button("✅ Xác nhận xoá"):
+                        for k, v in DEFAULT_DATA.items():
+                            st.session_state[k] = v
+                        st.session_state.confirm_reset = False
+                        save_data()
+                        st.rerun()
+                with rc2:
+                    if st.button("❌ Huỷ"):
+                        st.session_state.confirm_reset = False
 
 
-# ==============================================================================
-# 26. MAIN ENTRY POINT
-# ==============================================================================
+def render_status_chips():
+    chips = []
+    if st.session_state.name:
+        chips.append(f"👤 {st.session_state.name}")
+    if st.session_state.target_lang:
+        meta = LANGUAGES.get(st.session_state.target_lang, {})
+        chips.append(f"{meta.get('flag','')} {st.session_state.target_lang}")
+        chips.append(f"📈 Level {st.session_state.level}")
+    chips.append(f"🔥 {st.session_state.streak} ngày")
+    chips.append(f"📚 {len(st.session_state.words_learned)} từ")
+    html = "".join([f'<span class="status-chip">{c}</span>' for c in chips])
+    st.markdown(f'<div class="status-row">{html}</div>', unsafe_allow_html=True)
+
+
+def get_greeting_message():
+    char_name = ANIMALS[st.session_state.character]["name"]
+    if st.session_state.onboard_stage == "ask_language":
+        return persona_pick("greet_new", char_name=char_name)
+    if st.session_state.name and st.session_state.target_lang and st.session_state.mode == "lesson":
+        level_data = current_level_data()
+        lesson_title = level_data["title"] if level_data else "hội thoại tự do"
+        return persona_pick("greet_returning", name=st.session_state.name, streak=max(st.session_state.streak, 1),
+                             lesson_title=lesson_title)
+    return f"Chào {st.session_state.name or 'bạn'}! Mình đã sẵn sàng, cùng học tiếp nhé!"
+
+
+def main():
+    inject_css()
+    st.markdown(f'<div class="buddy-name">{ANIMALS[st.session_state.character]["name"]} 🐾 AI Buddy</div>', unsafe_allow_html=True)
+    st.markdown('<div class="buddy-sub">Người bạn đồng hành học ngoại ngữ của bạn</div>', unsafe_allow_html=True)
+
+    render_top_bar()
+    render_character()
+
+    # xác định tin nhắn hiển thị trong bong bóng thoại
+    if st.session_state.pending_greeting:
+        msg = get_greeting_message()
+        st.session_state.chat_log.append({"role": "ai", "text": msg, "ts": datetime.datetime.now().isoformat()})
+        st.session_state.pending_greeting = False
+        save_data()
+    else:
+        ai_msgs = [h for h in st.session_state.chat_log if h["role"] == "ai"]
+        msg = ai_msgs[-1]["text"] if ai_msgs else get_greeting_message()
+
+    render_speech_bubble(msg)
+
+    lang_code = LANGUAGES.get(st.session_state.target_lang, {}).get("tts", "vi-VN")
+    speak_text(msg, lang_code)
+
+    if st.session_state.target_lang and st.session_state.onboard_stage == "lesson":
+        render_status_chips()
+
+    st.write("")
+    mic_button(lang_code if st.session_state.target_lang else "vi-VN", key="main_mic")
+
+    with st.form(key="chat_form", clear_on_submit=True):
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            user_text = st.text_input("Nhập câu trả lời...", label_visibility="collapsed",
+                                       placeholder="Gõ hoặc dùng micro để trả lời...")
+        with col2:
+            submitted = st.form_submit_button("Gửi ➤", use_container_width=True)
+
+    if submitted and user_text.strip():
+        handle_send(user_text)
+        st.rerun()
+
+    # Gợi ý nhanh khi vừa hỏi ngôn ngữ / chưa có tên
+    if st.session_state.onboard_stage == "ask_language":
+        st.write("")
+        st.caption("Hoặc chọn nhanh:")
+        cols = st.columns(3)
+        learnable = list(LANGUAGES.keys())
+        for i, lang in enumerate(learnable):
+            with cols[i % 3]:
+                if st.button(f"{LANGUAGES[lang]['flag']} {lang}", key=f"quick_lang_{lang}", use_container_width=True):
+                    handle_send(f"Tôi muốn học {lang}")
+                    st.rerun()
+
+    # thanh hành động nhanh trong lúc học
+    if st.session_state.onboard_stage == "lesson" and st.session_state.mode == "lesson":
+        st.write("")
+        qc1, qc2, qc3 = st.columns(3)
+        with qc1:
+            if st.button("🔁 Ôn bài cũ", use_container_width=True):
+                handle_send("ôn bài cũ")
+                st.rerun()
+        with qc2:
+            if st.button("💬 Luyện hội thoại", use_container_width=True):
+                handle_send("luyện hội thoại")
+                st.rerun()
+        with qc3:
+            if st.button("❓ Không hiểu", use_container_width=True):
+                handle_send("không hiểu")
+                st.rerun()
+
+    if st.session_state.mode == "roleplay":
+        st.caption(f"🎭 Đang nhập vai: {st.session_state.roleplay_scenario} — chỉ dùng {st.session_state.target_lang} nhé, gõ 'không hiểu' nếu cần trợ giúp!")
+
+    with st.expander("🗂️ Lịch sử trò chuyện gần đây"):
+        for h in st.session_state.chat_log[-14:]:
+            who = "🙋 Bạn" if h["role"] == "user" else ANIMALS[st.session_state.character]["name"]
+            st.markdown(f"**{who}:** {h['text']}")
+
+
 if __name__ == "__main__":
-    router()
+    main()
