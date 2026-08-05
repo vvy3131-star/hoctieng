@@ -1,247 +1,291 @@
-import streamlit as st
 import json
-import sqlite3
-import base64
 import os
-from datetime import datetime
+import streamlit as st
 from openai import OpenAI
 
-# ==========================================
-# 1. CẤU HÌNH BAN ĐẦU & KHỞI TẠO CƠ SỞ DỮ LIỆU
-# ==========================================
-st.set_page_config(page_title="AI Language Tutor", layout="wide", initial_sidebar_state="collapsed")
+# 1. CẤU HÌNH TRANG & CÀI ĐẶT CHUNG
+st.set_page_config(
+    page_title="AI Language Teacher",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
 
-DB_FILE = "tutor_progress.db"
+# Đường dẫn lưu dữ liệu tiến trình học
+DB_FILE = "user_progress.json"
 
-def init_db():
-    """Khởi tạo SQLite lưu trữ tiến trình học tập của người dùng."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS progress (
-            id INTEGER PRIMARY KEY,
-            current_lang TEXT,
-            level INTEGER,
-            current_lesson TEXT,
-            learned_words TEXT,
-            streak_days INTEGER,
-            last_learned TEXT
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role TEXT,
-            content TEXT,
-            timestamp TEXT
-        )
-    ''')
-    
-    # Khởi tạo dữ liệu mặc định nếu chưa có
-    cursor.execute("SELECT COUNT(*) FROM progress")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute('''
-            INSERT INTO progress (id, current_lang, level, current_lesson, learned_words, streak_days, last_learned)
-            VALUES (1, NULL, 1, 'Chưa bắt đầu', '[]', 0, NULL)
-        ''')
-    conn.commit()
-    conn.close()
 
-init_db()
-
-def get_progress():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT current_lang, level, current_lesson, learned_words, streak_days, last_learned FROM progress WHERE id = 1")
-    row = cursor.fetchone()
-    conn.close()
+# Hàm tải tiến trình người dùng
+def load_progress():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
     return {
-        "current_lang": row[0],
-        "level": row[1],
-        "current_lesson": row[2],
-        "learned_words": json.loads(row[3]),
-        "streak_days": row[4],
-        "last_learned": row[5]
+        "current_language": None,
+        "level": 1,
+        "topic": "Xin chào & Khởi đầu",
+        "streak": 1,
+        "history": [],
     }
 
-def update_progress(current_lang, level, current_lesson, learned_words, streak_days):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE progress 
-        SET current_lang = ?, level = ?, current_lesson = ?, learned_words = ?, streak_days = ?, last_learned = ?
-        WHERE id = 1
-    ''', (current_lang, level, current_lesson, json.dumps(learned_words), streak_days, datetime.now().strftime("%Y-%m-%d")))
-    conn.commit()
-    conn.close()
 
-def save_chat(role, content):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO chat_history (role, content, timestamp) VALUES (?, ?, ?)", 
-                   (role, content, datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
+# Hàm lưu tiến trình người dùng
+def save_progress(progress):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(progress, f, ensure_ascii=False, indent=4)
 
-def get_chat_history(limit=10):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT role, content FROM chat_history ORDER BY id DESC LIMIT ?", (limit,))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows[::-1] # Đảo chuỗi để đúng thứ tự thời gian
 
-def clear_chat_history():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM chat_history")
-    conn.commit()
-    conn.close()
+# Khởi tạo Session State
+if "progress" not in st.session_state:
+    st.session_state.progress = load_progress()
+if "ai_text" not in st.session_state:
+    st.session_state.ai_text = (
+        "Xin chào! Mình là giáo viên AI của bạn. Bạn muốn học ngôn ngữ nào hôm nay? "
+        "(Hãy nói: Tiếng Anh, Tiếng Trung, Tiếng Nhật, Tiếng Hàn, Tiếng Pháp, Tiếng Đức, Tiếng Tây Ban Nha, Tiếng Nga...)"
+    )
+if "user_text" not in st.session_state:
+    st.session_state.user_text = ""
+if "tts_trigger" not in st.session_state:
+    st.session_state.tts_trigger = True
 
-# Khởi tạo trạng thái Session State trong Streamlit
-progress_data = get_progress()
-if "ai_response" not in st.session_state:
-    st.session_state.user_voice_text = ""
-    # Nếu đã học trước đó, AI nhắc lại bài cũ. Nếu chưa, AI chào hỏi ban đầu.
-    if progress_data["current_lang"]:
-        st.session_state.ai_response = f"Chào mừng bạn quay lại! Hôm trước chúng ta đã học đến: Level {progress_data['level']} - {progress_data['current_lesson']}. Hôm nay chúng ta sẽ tiếp tục học {progress_data['current_lang']} nhé!"
-    else:
-        st.session_state.ai_response = "Xin chào! Mình sẽ đồng hành cùng bạn học ngoại ngữ. Bạn muốn học ngôn ngữ nào trong các ngôn ngữ sau: Anh, Trung, Nhật, Hàn, Pháp, Đức, Tây Ban Nha, Nga, Việt?"
-
-# ==========================================
-# 2. GIAO DIỆN PHÍA TRƯỚC (UI) & CSS ANIMATION
-# ==========================================
-
-# Thiết kế giao diện tối giản, tối màu (Dark Mode) và nhân vật chuyển động nhấp nháy mắt, nhún nhảy nhẹ
-st.markdown("""
-<style>
-    /* Reset & Dark background */
-    .stApp {
-        background-color: #121214;
-        color: #E2E8F0;
-    }
+# 2. GIAO DIỆN TỐI GIẢN (CSS CUSTOM)
+st.markdown(
+    """
+    <style>
+    /* Ẩn toàn bộ menu, header, footer của Streamlit để tránh màn hình đen/rác */
+    #MainMenu, header, footer {visibility: hidden;}
+    .stApp {background-color: #121212; color: #ffffff;}
     
-    /* Container chính chứa nhân vật */
+    /* Khung chứa nhân vật hoạt hình */
     .avatar-container {
         display: flex;
-        flex-direction: column;
-        align-items: center;
         justify-content: center;
-        padding-top: 2rem;
-        position: relative;
-    }
-
-    /* Bong bóng hội thoại kiểu hiện đại */
-    .speech-bubble {
-        position: relative;
-        background: #1F2937;
-        border: 2px solid #3B82F6;
-        border-radius: 20px;
-        padding: 20px;
-        max-width: 600px;
-        text-align: center;
-        font-size: 1.2rem;
-        font-weight: 500;
-        margin-bottom: 30px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-        line-height: 1.6;
-        animation: fadeIn 0.5s ease-in-out;
-    }
-    .speech-bubble:after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        width: 0;
-        height: 0;
-        border: 15px solid transparent;
-        border-top-color: #1F2937;
-        border-bottom: 0;
-        margin-left: -15px;
-        margin-bottom: -15px;
-    }
-
-    /* Tạo hình nhân vật Robot bằng SVG nhúng CSS kèm Animation thở + nháy mắt */
-    .ai-character {
+        align-items: center;
+        margin: 20px auto;
         width: 220px;
         height: 220px;
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://w3.org' viewBox='0 0 100 100'><ellipse cx='50' cy='65' rx='30' ry='25' fill='%233B82F6'/><circle cx='50' cy='35' r='20' fill='%232563EB'/><g id='eyes'><circle cx='43' cy='33' r='3' fill='%2300F5FF'/><circle cx='57' cy='33' r='3' fill='%2300F5FF'/></g><rect cx='45' cy='45' width='10' height='3' rx='1' fill='%231D4ED8'/><path d='M 42 18 Q 50 8 50 5' stroke='%232563EB' stroke-width='2' fill='none'/><circle cx='50' cy='5' r='2' fill='%2300F5FF'/></svg>");
-        background-size: contain;
-        background-repeat: no-repeat;
-        animation: float 4s ease-in-out infinite, blink 5s infinite;
+        background: radial-gradient(circle, #2a2a3a 0%, #1a1a26 70%);
+        border-radius: 50%;
+        box-shadow: 0 0 30px rgba(0, 255, 200, 0.2);
+        position: relative;
     }
-
-    /* Hiệu ứng thở nhẹ */
+    
+    /* Vẽ nhân vật Robot Hoạt hình bằng CSS tinh gọn (tránh lỗi load ảnh chậm) */
+    .robot {
+        width: 100px;
+        height: 100px;
+        background: #00ffcc;
+        border-radius: 40px 40px 30px 30px;
+        position: relative;
+        animation: float 3s ease-in-out infinite;
+    }
+    .robot::before, .robot::after {
+        content: '';
+        position: absolute;
+        background: #121212;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        top: 35px;
+        animation: blink 4s infinite;
+    }
+    .robot::before { left: 24px; }
+    .robot::after { right: 24px; }
+    
+    .robot-mouth {
+        width: 30px;
+        height: 8px;
+        background: #121212;
+        position: absolute;
+        bottom: 25px;
+        left: 35px;
+        border-radius: 0 0 15px 15px;
+        animation: talk 0.5s infinite alternate paused;
+    }
+    
+    /* Hiệu ứng chuyển động nhẹ và nháy mắt */
     @keyframes float {
-        0% { transform: translateY(0px) scale(1); }
-        50% { transform: translateY(-10px) scale(1.02); }
-        100% { transform: translateY(0px) scale(1); }
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
     }
-
-    /* Hiệu ứng chớp mắt tự nhiên */
     @keyframes blink {
-        0%, 90%, 100% { opacity: 1; }
-        93%, 97% { opacity: 0.2; transform: scaleY(0.1); }
+        0%, 90%, 100% { transform: scaleY(1); }
+        95% { transform: scaleY(0.1); }
     }
     
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
+    /* Bong bóng hội thoại phía trên */
+    .speech-bubble {
+        background-color: #222530;
+        border: 2px solid #00ffcc;
+        border-radius: 20px;
+        padding: 15px 25px;
+        margin: 10px auto 30px auto;
+        max-width: 500px;
+        text-align: center;
+        font-size: 1.15rem;
+        font-weight: 500;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        position: relative;
     }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-    /* Ẩn header mặc định của Streamlit để tăng độ tối giản */
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
+# 3. NHẬN DIỆN VÀ XỬ LÝ LỜI THOẠI CHÍNH (Xử lý OpenAI API)
+# Tự động lấy API Key từ môi trường hoặc secret của Streamlit
+api_key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
 
-# Hiển thị khu vực nhân vật trung tâm
-st.markdown('<div class="avatar-container">', unsafe_allow_html=True)
-st.markdown(f'<div class="speech-bubble">{st.session_state.ai_response}</div>', unsafe_allow_html=True)
-st.markdown('<div class="ai-character"></div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# Ô nhập API Key phòng trường hợp chưa cấu hình trên Server
+if not api_key:
+    api_key = st.text_input(
+        "Nhập OpenAI API Key để kích hoạt giáo viên:", type="password"
+    )
 
-st.markdown("<br><br>", unsafe_allow_html=True)
+# Xử lý Logic AI khi nhận được văn bản từ Microphone
+if st.session_state.user_text and api_key:
+    try:
+        client = OpenAI(api_key=api_key)
+        p = st.session_state.progress
 
-# Tách thanh điều khiển đầu vào xuống dưới chân màn hình
-col_space1, col_input, col_space2 = st.columns([1, 2, 1])
+        # Xây dựng ngữ cảnh sư phạm cho AI đóng vai Giáo viên bản xứ
+        system_prompt = f"""
+        Bạn là một giáo viên dạy ngoại ngữ hoạt hình vui tính, kiên nhẫn.
+        Tiến trình hiện tại của học sinh:
+        - Ngôn ngữ đang học: {p['current_language'] if p['current_language'] else 'Chưa chọn (Đang đợi học sinh nói tên ngôn ngữ muốn học)'}
+        - Cấp độ hiện tại: Level {p['level']} ({p['topic']})
+        
+        NHIỆM VỤ CỦA BẠN:
+        1. Nếu học sinh chưa chọn ngôn ngữ, hãy nhận diện ngôn ngữ họ muốn học từ câu trả lời của họ (Ví dụ: "Tiếng Anh", "Tiếng Trung"...), cập nhật hệ thống và bắt đầu bài học Level 1 (Chào hỏi) bằng ngôn ngữ đó kèm giải thích tiếng Việt.
+        2. Nếu đã có ngôn ngữ, hãy đóng vai người bản xứ dạy học. Luôn nói câu ngoại ngữ trước, viết phiên âm (nếu có), giải thích nghĩa bằng tiếng Việt ngắn gọn.
+        3. Chấm điểm hoặc nhận xét phản hồi của học sinh xem chính xác chưa, sửa lỗi sai nếu phát hiện ra lỗi qua văn bản họ đọc lại.
+        4. Giữ câu thoại ngắn gọn, tối giản, phù hợp hiện thị trong bong bóng nhỏ.
+        """
 
-with col_input:
-    # Form cấu hình API Key và cấu hình Giọng nói mở rộng
-    with st.expander("⚙️ Cấu hình API OpenAI & Giọng nói"):
-        api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
-        voice_gender = st.selectbox("Giọng nói AI (TTS)", ["alloy", "echo", "fable", "onyx", "nova", "shimmer"], index=4)
-        speed = st.slider("Tốc độ nói", min_value=0.5, max_value=1.5, value=1.0, step=0.1)
+        # Lấy lịch sử hội thoại gần nhất để ghi nhớ ngữ cảnh
+        messages = [{"role": "system", "content": system_prompt}]
+        for chat in p["history"][-6:]:
+            messages.append({"role": "user", "content": chat["user"]})
+            messages.append({"role": "assistant", "content": chat["ai"]})
 
-    # Ô nhập văn bản chính của người dùng
-    user_input = st.text_input("Trò chuyện hoặc trả lời Giáo viên AI tại đây:", key="user_text_input", placeholder="Nhập câu trả lời hoặc yêu cầu của bạn...")
+        messages.append({"role": "user", "content": st.session_state.user_text})
 
-    # Khu vực Giả lập Micro (Nhận diện giọng nói STT) do giới hạn môi trường chạy Server
-    st.markdown("<p style='text-align:center; font-size:0.9rem; color:#6B7280;'>Mô phỏng Ghi âm bằng Micro (Speech-to-Text):</p>", unsafe_allow_html=True)
-    col_mic, col_clear = st.columns(2)
-    with col_mic:
-        st.caption("Bấm nút giả lập micro để nhập nhanh phát âm mẫu:")
-        if st.button("🎤 Bấm để Nói (Giả lập phát âm đúng)", use_container_width=True):
-            st.session_state.user_voice_text = "Nǐ hǎo"
-            st.info("Đã nhận diện từ Micro: 'Nǐ hǎo'")
-    with col_clear:
-        st.caption("Xóa tiến trình để học lại từ đầu:")
-        if st.button("🗑️ Xóa toàn bộ lịch sử & Học lại", use_container_width=True):
-            clear_chat_history()
-            update_progress(None, 1, "Chưa bắt đầu", [], 0)
-            st.session_state.ai_response = "Hệ thống đã reset. Bạn muốn học ngôn ngữ nào?"
-            st.rerun()
+        # Gọi OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-4o-mini", messages=messages, temperature=0.7
+        )
 
-# ==========================================
-# 3. XỬ LÝ LOGIC TRÍ TUỆ NHÂN TẠO (OPENAI API)
-# ==========================================
+        ai_reply = response.choices[0].message.content
+        st.session_state.ai_text = ai_reply
 
-def call_ai_teacher(prompt_input, current_state, history_logs, api_key):
-    """Gửi yêu cầu tới OpenAI gánh vác vai trò Giáo viên bản xứ và chấm điểm."""
-    if not api_key:
-        return "Vui lòng cấu hình OpenAI API Key trong mục bánh răng cài đặt phía dưới để trò chuyện cùng mình nhé!", None
+        # Tự động phân tích xem có chuyển đổi hoặc lưu ngôn ngữ mới không
+        if not p["current_language"]:
+            for lang in [
+                "Anh",
+                "Trung",
+                "Nhật",
+                "Hàn",
+                "Pháp",
+                "Đức",
+                "Tây Ban Nha",
+                "Nga",
+            ]:
+                if lang.lower() in st.session_state.user_text.lower():
+                    p["current_language"] = f"Tiếng {lang}"
+                    p["level"] = 1
+                    p["topic"] = "Xin chào & Tạm biệt"
+                    break
 
-    client = OpenAI(api_key=api_key)
-    
-    # Định hình Hệ thống Prompt đóng vai giáo viên chấm điểm gắt gao theo đúng yêu cầu bài học
+        # Cập nhật lịch sử và lưu file JSON
+        p["history"].append(
+            {"user": st.session_state.user_text, "ai": ai_reply}
+        )
+        save_progress(p)
+
+        # Kích hoạt phát âm giọng nói mới
+        st.session_state.tts_trigger = True
+
+    except Exception as e:
+        st.session_state.ai_text = (
+            f"Có lỗi kết nối AI: {str(e)}. Bạn hãy kiểm tra lại API Key nhé."
+        )
+
+    # Xóa dữ liệu nhận diện cũ để sẵn sàng cho lượt nói tiếp theo
+    st.session_state.user_text = ""
+
+
+# 4. HIỂN THỊ GIAO DIỆN CHÍNH (CHỈ CÓ NHÂN VẬT & BONG BÓNG)
+st.write("")
+# Bong bóng lời thoại của Robot đặt trên cùng
+st.markdown(
+    f'<div class="speech-bubble">{st.session_state.ai_text}</div>',
+    unsafe_allow_html=True,
+)
+
+# Nhân vật hoạt hình ở chính giữa
+st.markdown(
+    '<div class="avatar-container"><div class="robot"><div class="robot-mouth"></div></div></div>',
+    unsafe_allow_html=True,
+)
+
+st.write("")
+
+# Lựa chọn giọng nói (Nam / Nữ) nằm gọn gàng bên dưới nhân vật
+voice_option = st.selectbox(
+    "Chọn giọng nói giáo viên AI:",
+    ["Nữ (Female Voice)", "Nam (Male Voice)"],
+    label_visibility="collapsed",
+)
+voice_gender = "female" if "Nữ" in voice_option else "male"
+
+
+# 5. CÔNG CỤ PHÁT ÂM (TTS) & NÚT MICRO SIÊU TO (STT) QUA TRÌNH DUYỆT HTML5
+# Đoạn mã JavaScript xử lý đồng thời việc Đọc thành tiếng của AI và nút bấm Mic ghi âm to đùng
+sound_lang = "vi-VN"
+# Trích xuất thử xem AI đang nói tiếng gì ở câu đầu để đổi giọng đọc tự động nếu cần
+if "English" in st.session_state.ai_text or "Hello" in st.session_state.ai_text:
+    sound_lang = "en-US"
+elif "你好" in st.session_state.ai_text:
+    sound_lang = "zh-CN"
+
+# Thiết lập trigger phát âm khi có câu thoại mới
+tts_js = ""
+if st.session_state.tts_trigger:
+    tts_js = f"""
+    var msg = new SpeechSynthesisUtterance({json.dumps(st.session_state.ai_text)});
+    msg.lang = '{sound_lang}';
+    var voices = window.speechSynthesis.getVoices();
+    // Tìm kiếm giọng nam/nữ phù hợp tương đối trong trình duyệt
+    for(var i = 0; i < voices.length; i++) {{
+        if(voices[i].lang.includes('{sound_lang.split("-")[0]}')) {{
+            if('{voice_gender}' == 'female' && voices[i].name.toLowerCase().includes('female')) {{
+                msg.voice = voices[i]; break;
+            }} else if ('{voice_gender}' == 'male' && voices[i].name.toLowerCase().includes('male')) {{
+                msg.voice = voices[i]; break;
+            }}
+        }}
+    }}
+    window.speechSynthesis.speak(msg);
+    """
+    st.session_state.tts_trigger = False
+
+# Thành phần Web component HTML chứa nút BẤM MIC TO ĐÙNG
+st.components.v1.html(
    
+    <div style="text-align: center; margin-top: 10px;">
+        <button id="mic-btn" style="
+            width: 90px; 
+            height: 90px; 
+            border-radius: 50%; 
+            border: none; 
+            background: linear-gradient(135deg, #ff007f, #7f00ff); 
+            color: white; 
+            font-size: 32px; 
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(255, 0, 127, 0.4);
+            transition: all 0.2s ease;
+        ">🎤</button>
+        <p id="status-text" style="color: #8888aa; font-size: 13px; margin-top: 10px; font-family: sans-serif;">
