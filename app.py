@@ -244,10 +244,4 @@ def call_ai_teacher(prompt_input, current_state, history_logs, api_key):
     client = OpenAI(api_key=api_key)
     
     # Định hình Hệ thống Prompt đóng vai giáo viên chấm điểm gắt gao theo đúng yêu cầu bài học
-    system_prompt = f"""
-    Bạn là một Giáo viên dạy ngoại ngữ bằng AI tài năng, thân thiện nhưng rất nghiêm khắc trong phát âm.
-    Nhiệm vụ của bạn là dẫn dắt người học qua các cấp độ tăng dần:
-    - Level 1: Xin chào, Tạm biệt, Cảm ơn.
-    - Level 2: Giới thiệu bản thân.
-    - Level 3: Gia đình.
-    - Level 4: Mua sắm.
+   
