@@ -239,7 +239,7 @@ def process_user_input(user_text):
     save_data()
 
 # ==============================================================================
-# 5. CẢO DIỆN & CSS (FULL SINGLE FILE)
+# 5. GIAO DIỆN & CSS (FULL SINGLE FILE)
 # ==============================================================================
 st.markdown("""
 <style>
@@ -317,7 +317,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Lời chào tự động khi khởi chạy
+# Lời chào tự động khi khởi chạy nếu lịch sử trống
 if not st.session_state.chat_log:
     if st.session_state.name or st.session_state.target_lang:
         welcome_msg = f"Chào mừng bạn quay lại! Hôm trước chúng ta đã học đến Level {st.session_state.level} ({st.session_state.target_lang}). Hôm nay chúng ta tiếp tục nhé!"
@@ -335,8 +335,13 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Hiển thị bong bóng hội thoại AI gần nhất
-latest_ai_msg = [m["text"] for m in st.session_state.chat_log if m["role"] == "assistant"][-1]
+# Lấy tin nhắn AI gần nhất an toàn (tránh IndexError)
+assistant_msgs = [m["text"] for m in st.session_state.chat_log if m.get("role") == "assistant"]
+if assistant_msgs:
+    latest_ai_msg = assistant_msgs[-1]
+else:
+    latest_ai_msg = "Xin chào! Mình sẽ đồng hành cùng bạn học ngoại ngữ.\nBạn muốn học ngôn ngữ nào?"
+
 st.markdown(f'<div class="speech-bubble">{latest_ai_msg.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
 
 # ==============================================================================
@@ -401,7 +406,6 @@ components.html(js_speech, height=0)
 
 # Khung nhập liệu & Thu âm Micro
 st.write("")
-col1, col2 = st.columns([5, 1])
 
 with st.container():
     with st.form(key="chat_form", clear_on_submit=True):
