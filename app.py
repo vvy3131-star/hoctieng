@@ -102,7 +102,7 @@ st.markdown(
         bottom: 25px;
         left: 35px;
         border-radius: 0 0 15px 15px;
-    }}
+    }
     
     /* Hiệu ứng chuyển động nhẹ và nháy mắt */
     @keyframes float {
@@ -233,20 +233,19 @@ voice_option = st.selectbox(
 voice_gender = "female" if "Nữ" in voice_option else "male"
 
 
-# 5. CÔNG CỤ PHÁT ÂM (TTS) & NÚT MICRO SIÊU TO QUA TRÌNH DUYỆT (Dùng Chuỗi Thường Loại Bỏ F-string)
+# 5. CÔNG CỤ PHÁT ÂM (TTS) & NÚT MICRO SIÊU TO QUA TRÌNH DUYỆT
 sound_lang = "vi-VN"
 if "English" in st.session_state.ai_text or "Hello" in st.session_state.ai_text:
     sound_lang = "en-US"
 elif "你好" in st.session_state.ai_text:
     sound_lang = "zh-CN"
 
-# Chuẩn bị dữ liệu an toàn để đưa vào JS, không lo xung đột ngoặc nhọn
 ai_say_json = json.dumps(st.session_state.ai_text)
 should_speak = "true" if st.session_state.tts_trigger else "false"
 st.session_state.tts_trigger = False
 
-# Thành phần Web component HTML/JS an toàn tuyệt đối
-html_code = """
+# Sử dụng r"""...""" (Raw string literal) để ngăn Python diễn dịch sai các dấu gạch chéo ngược trong JS
+html_code = r"""
 <div style="text-align: center; margin-top: 10px;">
     <button id="mic-btn" style="
         width: 110px; 
@@ -266,7 +265,6 @@ html_code = """
 </div>
 
 <script>
-// Nhận diện biến từ môi trường Python truyền xuống ngầm qua thẻ data
 const aiText = {AI_TEXT_PLACEHOLDER};
 const shouldSpeak = {SHOULD_SPEAK_PLACEHOLDER};
 const soundLang = "{LANG_PLACEHOLDER}";
@@ -288,7 +286,6 @@ if (shouldSpeak) {
     window.speechSynthesis.speak(msg);
 }
 
-// Xử lý bộ nhận diện giọng nói tích hợp trình duyệt
 const micBtn = document.getElementById('mic-btn');
 const statusText = document.getElementById('status-text');
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -302,3 +299,9 @@ if (!SpeechRecognition) {
     
     let isRecording = false;
     micBtn.addEventListener('click', () => {
+        if (!isRecording) { recognition.start(); } 
+        else { recognition.stop(); }
+    });
+
+    recognition.onstart = () => {
+        isRecording = true;
